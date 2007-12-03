@@ -1,0 +1,10 @@
+Changes
+Makefile.PL
+MANIFEST
+README
+t/Qmail-Deliverable.t
+lib/Qmail/Deliverable.pm
+lib/Qmail/Deliverable/Client.pm
+bin/qmail-deliverabled
+qpsmtpd-plugin/check_qmail_deliverable
+META.yml                                 Module meta-data (added by MakeMaker)

@@ -1,0 +1,94 @@
+#!/usr/bin/perl -Tw
+use strict;
+
+use HTTP::Daemon;
+use HTTP::Status;
+use URI::Escape qw(uri_unescape);
+use Qmail::Deliverable ':all';
+
+my $listen = shift || "127.0.0.1:8998";
+($listen) = $listen =~ /^([0-9.]+:[0-9]+)$/
+    or die "Listen argument must be ip:port!\n";
+
+chdir '/';
+fork && exit;
+
+my $d = HTTP::Daemon->new(
+    LocalAddr => $listen,
+    ReuseAddr => 1,
+) or die "Could not start daemon ($!)";
+
+$SIG{HUP} = sub {
+    warn "SIGHUP received.\n";
+    reread_config;
+    warn "Qmail configuration reloaded.\n";
+};
+
+for (;;) {
+    while (my $c = $d->accept) {
+        while (my $r = $c->get_request) {
+            if ($r->method ne 'GET' or $r->uri->path !~ m[^/qd1/]) {
+                $c->send_error(RC_FORBIDDEN);
+                next;
+            }
+            my (undef, undef, $command) = split m[/], $r->uri->path;
+
+            my $arg = uri_unescape($r->uri->query);
+
+            my $rv;
+            if ($command eq 'qmail_local') {
+                $rv = qmail_local($arg);
+            } elsif ($command eq 'deliverable') {
+                $rv = deliverable($arg);
+            } else {
+                $c->send_error(RC_FORBIDDEN);
+                next;
+            }
+            if (defined $rv) {
+                $c->send_response( HTTP::Response->new(200, "OK", undef, $rv) );
+            } else {
+                $c->send_response( HTTP::Response->new(204, "UNDEF", undef, "undef") );
+            }
+
+        }
+        $c->close;
+        undef($c);
+    }
+    sleep 5;
+}
+
+__END__
+
+=head1 NAME
+
+qmail-deliverabled - Deliverabitily check daemon
+
+=head1 USAGE
+
+    qmail-deliverabled 127.0.0.1:8998
+
+Specify IP address and port to listen on. By default listens on the local
+loopback (127.0.0.1) on port 8998.
+
+=head1 DESCRIPTION
+
+Exposes the Qmail::Deliverable functions C<qmail_local> and C<deliverable>
+over HTTP. Typically requires root access for file permissions.
+
+Requires the HTTP::Daemon module, available from CPAN.
+
+Use only with a ::Client of the same version. Returns 403 FORBIDDEN on error,
+any error.
+
+=head1 LEGAL
+
+This software is released into the public domain, and does not come with
+warranty or guarantee of any kind. Use it at your own risk.
+
+=head1 AUTHOR
+
+Juerd Waalboer <#####@juerd.nl>
+
+=head1 SEE ALSO
+
+L<Qmail::Deliverable::Client>
