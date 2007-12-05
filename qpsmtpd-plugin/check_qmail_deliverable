@@ -95,8 +95,8 @@ To install the plugin:
 
     ln -s $Bin/$Script $dir/
 
-And add "$Script" to $file, before rcpt_ok. For configuration
-instructions, read "man $Script"
+And add "$Script server 127.0.0.1:8998" to $file, before rcpt_ok.
+For configuration instructions, read "man $Script"
 
 (Paths may vary.)
 
@@ -163,6 +163,7 @@ sub rcpt_handler {
     my $k = 0;  # known status code
     $self->log(LOGINFO, "Permission failure"),              $k++ if $rv == 0x11;
     $self->log(LOGINFO, "qmail-command in dot-qmail"),      $k++ if $rv == 0x12;
+    $self->log(LOGINFO, "bouncesaying with program"),       $k++ if $rv == 0x13;
     $self->log(LOGINFO, "Temporarily undeliverable: group/world writable"), $k++
                                                                  if $rv == 0x21;
     $self->log(LOGINFO, "Temporarily undeliverable: sticky home directory"),$k++

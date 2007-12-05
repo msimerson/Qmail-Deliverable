@@ -1,5 +1,9 @@
 Revision history for Perl extension Qmail::Deliverable.
 
+1.02
+        - Support for bouncesaying, although without using the configured
+          error message. Plesk puts |bouncesaying in .qmail-default.
+
 1.01
         - qpsmtpd plugin check_qmail_deliverable installs as a binary, so
           that it has a manpage. If you execute it, you get installation

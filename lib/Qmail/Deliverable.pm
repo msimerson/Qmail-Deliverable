@@ -5,7 +5,7 @@ use 5.006;
 use Carp qw(carp);
 use base 'Exporter';
 
-our $VERSION = '1.01';
+our $VERSION = '1.02';
 our @EXPORT_OK = qw/reread_config qmail_local dot_qmail deliverable qmail_user/;
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 
@@ -15,6 +15,12 @@ my $valid = qr/^(?!.*\@.*\@)($atext+(?:[\@.]$atext+)*)\.?\z/;
 
 # disallow control characters and non-ascii
 my $ascii = qr/^([\x20-\x7e]*)\z/;
+
+# parse shell line
+my $shell_sq = qr/'[^']+'/;  # no escaping in single quotes!
+my $shell_dq = qr/(?:(?:\")(?:[^\\\"]*(?:\\.[^\\\"]*)*)(?:\"))/;  # from Regexp::Common
+my $shell_bare = qr/[^"'\\\s]+/;  # no sq, dq, backslash, or space
+my $shell_token = qr/(\\.|$shell_sq|$shell_dq|$shell_bare)+/;
 
 sub _readpipe {
     my ($command, @args) = @_;
@@ -202,6 +208,12 @@ sub deliverable {
         return 0xf2 if -d "$homedir/$origlocal";
         return 0x00;
     }
+    if ($dot_qmail[0] =~ /^\|bouncesaying\s+(.*)/) {
+        my @args = $1 =~ /$shell_token/g;
+        return 0x13 if @args > 1;
+        return 0x00;
+    }
+
     return 0x12 if grep /^\|/, @dot_qmail;
 
     return 0xf1;
@@ -308,6 +320,7 @@ Possible return values are:
 
     0x11   Deliverability unknown: permission denied for any file
     0x12   Deliverability unknown: qmail-command called in dot-qmail file
+    0x13   Deliverability unknown: bouncesaying with program
 
     0x21   Temporarily undeliverable: group/world writable
     0x22   Temporarily undeliverable: homedir is sticky
@@ -329,6 +342,9 @@ returned. 0x00 is returned if the line also contains "bounce-no-mailbox" and
 no directory exists by the name of the local part of the address. B<For this to
 work, the full address (including C<@domain>) must be given.>
 
+Another special case exists for bouncesaying (used by Plesk). 0x00 or 0x13 is
+returned.
+
 =item reread_config
 
 Re-reads the config files /var/qmail/control/locals,
@@ -338,14 +354,18 @@ Re-reads the config files /var/qmail/control/locals,
 
 =head1 CAVEATS
 
+Although C<bouncesaying> and C<vpopmail's vdeliver> special cased, normally if
+you have a catch-all .qmail-default and let a program do all the work, this
+module cannot determine deliverability in a useful way, because it would need
+to execute the program. It failsafes by allowing delivery.
+
 This module does NOT support user-ext characters other than hyphen (dash). i.e.
 ".qmail+default" is not supported.
 
-The "percent hack" is not considered.
+The "percent hack" (user%domain@ignored) is not supported.
 
-Although vpopmail's vdeliver is special cased, normally if you have a catch-all
-.qmail-default and let a program do all the work, this module cannot determine
-deliverability in a useful way, because it would need to execute the program.
+The error message passed to bouncesaying is ignored. The default "No mailbox
+here by that name" is used.
 
 Addresses are lower cased before comparison, but having upper cased user names
 or domain names in configuration may or may not work.
@@ -353,7 +373,7 @@ or domain names in configuration may or may not work.
 This module is relatively new and has not been used in production for a very
 long time.
 
-CDB files are not supported yet. The plain text source files are used.
+CDB files are not supported (yet). The plain text source files are used.
 
 This is not a replacement for existing relay checks. You still need those.
 
