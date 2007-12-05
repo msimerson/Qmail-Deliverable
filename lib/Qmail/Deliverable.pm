@@ -5,7 +5,7 @@ use 5.006;
 use Carp qw(carp);
 use base 'Exporter';
 
-our $VERSION = '1.00';
+our $VERSION = '1.01';
 our @EXPORT_OK = qw/reread_config qmail_local dot_qmail deliverable qmail_user/;
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 
@@ -229,15 +229,17 @@ In a qpsmtpd plugin:
 
 Probably also pretty useful:
 
-    my $dot_qmail_filename = dot_qmail "foo@example.com";
+    my $dot_qmail_filename = dot_qmail 'foo@example.com';
 
 =head1 DESCRIPTION
 
 qmail-smtpd does not know if a user exists. Lots of resources are wasted by
-scanning mail for spam and viruses for addresses that do not exist anyway.
+scanning mail for spam and viruses for addresses that do not exist anyway,
+including the annoying I<backscatter> or I<outscatter> phenomenon.
 
 A replacement smtpd written in Perl could use this module to quickly verify
-that a local email address is (probably) actually in use.
+that a local email address is (probably) actually in use. Qmail::Delivery uses
+the same logic that qmail itself (in qmail-send/lspawn/local) uses.
 
 =head2 Bundled software
 

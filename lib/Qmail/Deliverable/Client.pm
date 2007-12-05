@@ -20,8 +20,17 @@ my $valid = qr/^(?!.*\@.*\@)($atext+(?:[\@.]$atext+)*)\.?\z/;
 sub _remote {
     my ($command, $arg) = @_;
 
+    my $server = ref($SERVER) eq 'CODE'
+        ? $SERVER->()
+        : $SERVER;
+
+    if (not defined $server) {
+        $ERROR = "No SERVER defined; connection not attempted";
+        return "\0";
+    }
+
     my $response = $ua->get(
-        "http://$SERVER/qd1/$command?" . uri_escape($arg)
+        "http://$server/qd1/$command?" . uri_escape($arg)
     );
 
     my $code = $response->code;
@@ -32,8 +41,8 @@ sub _remote {
         return $response->content;
     }
 
-    carp $ERROR = "Server $SERVER unreachable or broken! ($sl)";
-    return undef;
+    carp $ERROR = "Server $server unreachable or broken! ($sl)";
+    return "\0";
 }
 
 sub qmail_local {
@@ -44,7 +53,9 @@ sub qmail_local {
     # This we can do locally. Let's not waste HTTP requests :)
     return $address if $address !~ /\@/;
 
-    return _remote 'qmail_local', $address;
+    my $rv = _remote 'qmail_local', $address;
+    return "" if defined $rv and $rv eq "\0";
+    return $rv;
 }
 
 sub deliverable {
@@ -53,8 +64,9 @@ sub deliverable {
         or do { carp "Invalid address: $in"; return; };
 
     my $rv = _remote 'deliverable', $address;
-    return 0x2f if not defined $rv;
-    return 0x2f if not length $rv;
+    return 0x2f if not defined $rv;  # shouldn't happen
+    return 0x2f if not length $rv;   # shouldn't happen
+    return 0x2f if $rv eq "\0";
 
     return $rv;
 }
@@ -82,6 +94,11 @@ module is a front end to it.
 
 This module requires LWP (libwww-perl), available from CPAN.
 
+=head2 Error reporting
+
+The error message for communication failure is reported via a warning, but also
+available via $Qmail::Deliverable::Client::ERROR.
+
 =head2 Configuration
 
 =over 4
@@ -91,12 +108,13 @@ This module requires LWP (libwww-perl), available from CPAN.
 IP adress and port of the qmail-deliverabled server, joined by a colon.
 Defaults to C<127.0.0.1:8998>, just like the daemon.
 
+This variable can also be assigned a code reference, in which case it is called
+in scalar context for each remote call, using the returned value.
+
+If the value is undef, then a connection failure is faked, but without the
+warning.
+
 =back
-
-=head2 Error reporting
-
-The error message is reported via a warning, but also avairable via
-$Qmail::Deliverable::Client::ERROR.
 
 =head2 Functions
 
@@ -110,7 +128,7 @@ in L<Qmail::Deliverable>.
 
 =item qmail_local $address
 
-As Qmail::Deliverable::qmail_local. Warns and returns undef on communication
+As Qmail::Deliverable::qmail_local. Warns and returns "" on communication
 failure.
 
 =item deliverable $address

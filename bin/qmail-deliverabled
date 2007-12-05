@@ -24,6 +24,10 @@ $SIG{HUP} = sub {
     warn "Qmail configuration reloaded.\n";
 };
 
+my $base0 = $0;
+my %counter;
+$counter{yes} = $counter{no} = 0;
+
 for (;;) {
     while (my $c = $d->accept) {
         while (my $r = $c->get_request) {
@@ -40,6 +44,13 @@ for (;;) {
                 $rv = qmail_local($arg);
             } elsif ($command eq 'deliverable') {
                 $rv = deliverable($arg);
+                $counter{yes}++ if $rv;
+                $counter{no}++ if not $rv;
+                my $total = $counter{yes} + $counter{no};
+                $0 = sprintf "$base0 yes=%d(%.1f%%), no=%d(%.1f%%), total=%d",
+                    $counter{yes}, $counter{yes}/$total*100,
+                    $counter{no},  $counter{no} /$total*100,
+                    $total;
             } else {
                 $c->send_error(RC_FORBIDDEN);
                 next;

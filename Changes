@@ -1,5 +1,18 @@
 Revision history for Perl extension Qmail::Deliverable.
 
+1.01
+        - qpsmtpd plugin check_qmail_deliverable installs as a binary, so
+          that it has a manpage. If you execute it, you get installation
+          instructions.
+        - $Qmail::Deliverable::Client::SERVER can be a callback now
+        - Plugin now uses the callback option for cleaner code
+        - Plugin now allows hostnames instead of IP adresses only
+        - Exclusions now enabled for smtproutes
+        - ::Client::qmail_local no longer returns undef on connection error,
+          because undef already meant something else
+        - qmail-deliverabled has basic statistics in $0
+        - minor documentation updates
+
 1.00  Sun Dec  2 17:36 2007
         - first CPAN release
 

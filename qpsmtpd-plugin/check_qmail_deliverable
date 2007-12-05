@@ -1,3 +1,5 @@
+#!/usr/bin/perl
+
 =head1 NAME
 
 check_qmail_deliverable - Check that the recipient address is deliverable
@@ -6,7 +8,7 @@ check_qmail_deliverable - Check that the recipient address is deliverable
 
 See the description of Qmail::Deliverable.
 
-This qpsmtpd plugin uses the client/server interface and needs a running
+This B<qpsmtpd plugin> uses the client/server interface and needs a running
 qmail-deliverabled. If no connection can be made, deliverability is simply
 assumed.
 
@@ -17,17 +19,17 @@ required for qmail-deliverabled and Qmail::Deliverable::Client.
 
 =over 4
 
-=item server ip:port
+=item server host:port
 
-IP address and port (both!) of the qmail-deliverabled server. If none is
-specified, the default (127.0.0.1:8998) is used.
+Hostname (or IP address), and port (both!) of the qmail-deliverabled server. If
+none is specified, the default (127.0.0.1:8998) is used.
 
-=item server smtproutes:ip:port
+=item server smtproutes:host:port
 
-If the IP address is prepended by "smtproutes:", the IP address is
-taken from the smtproutes file, iff the recipient's domain is listed in
-/var/qmail/control/smtproutes (wildcards are supported) and the configured MX
-is a square bracketed IP address.
+If the specification is prepended by the literal text C<smtproutes:>, then for
+recipient domains listed in your /var/qmail/control/smtproutes use their
+respective hosts for the check. For other domains, the given host is used. The
+port has to be the same across all servers.
 
 Example:
 
@@ -40,15 +42,10 @@ check for domains not listed in smtproutes.
 
 =head1 CAVEATS
 
-The smtproutes magic does support wildcards, but not overriding with a
-non-numeric IP or empty MX definition.
+Given a null host in smtproutes, the normal MX lookup should be used. This
+plugin does not do this, because we don't want to harrass arbitrary servers.
 
-This means that:
-
-    .example.com:[10.11.12.13]
-    foo.example.com:bar.example.org
-
-Will query 10.11.12.13 for anything@foo.example.com.
+Connection failure is *faked* when there is no smtproute.
 
 =head1 LEGAL
 
@@ -68,10 +65,54 @@ L<Qmail::Deliverable>, L<qmail-deliverabled>, L<Qmail::Deliverable::Client>
 #################################
 #################################
 
+BEGIN {
+    use FindBin qw($Bin $Script);
+    if (not $INC{'Qpsmtpd.pm'}) {
+        my $dir = '$PLUGINS_DIRECTORY';
+        -d and $dir = $_ for qw(
+            /home/qpsmtpd/plugins
+            /home/smtp/qpsmtpd/plugins
+            /usr/local/qpsmtpd/plugins
+            /usr/local/share/qpsmtpd/plugins
+            /usr/share/qpsmtpd/plugins
+        );
+
+        my $file = "the 'plugins' configuration file";
+        -f and $file = $_ for qw(
+            /home/qpsmtpd/config/plugins
+            /home/smtp/qpsmtpd/config/plugins
+            /usr/local/qpsmtpd/config/plugins
+            /usr/local/etc/qpsmtpd/plugins
+            /etc/qpsmtpd/plugins
+        );
+
+        # "die" would print "BEGIN failed" garbage
+        print STDERR <<"END";
+
+This is a plugin for qpsmtpd and should not be run manually.
+
+To install the plugin:
+
+    ln -s $Bin/$Script $dir/
+
+And add "$Script" to $file, before rcpt_ok. For configuration
+instructions, read "man $Script"
+
+(Paths may vary.)
+
+END
+        exit 255;
+    }
+}
+
+#################################
+#################################
+
 use Qmail::Deliverable::Client qw(deliverable);
 use strict;
 
 my %smtproutes;
+my $shared_domain;  # global variable to be closed over by the SERVER callback
 
 sub register {
     my ($self, $qp, @args) = @_;
@@ -80,15 +121,26 @@ sub register {
     } else {
         my %args = @args;
         if ($args{server} =~ /^smtproutes:/) {
+
+            my ($fallback, $port) = $args{server} =~ /:(?:(.*?):?)(\d+)/;
+
             open my $fh, "/var/qmail/control/smtproutes"
                 or warn "Could not read smtproutes";
             for (readline $fh) {
-                my ($domain, $mx) = /^(.*?):\[([\d.]+)\]/;
-                next if not $mx;
+                my ($domain, $mx) = /^(.*?) : \[? ( [^\]:\s]* )/x;
                 $smtproutes{$domain} = $mx;
             }
+
+            $Qmail::Deliverable::Client::SERVER = sub {
+                my $server = _smtproute($shared_domain);
+                return "$server:$port"   if defined $server;
+                return "$fallback:$port" if defined $fallback;
+                return;
+            };
+
+        } elsif ($args{server}) {
+            $Qmail::Deliverable::Client::SERVER = $args{server};
         }
-        $Qmail::Deliverable::Client::SERVER = $args{server} if $args{server};
     }
     $self->register_hook("rcpt", "rcpt_handler");
 }
@@ -96,29 +148,15 @@ sub register {
 sub rcpt_handler {
     my ($self, $transaction, $rcpt) = @_;
 
-    local $Qmail::Deliverable::Client::SERVER
-        = $Qmail::Deliverable::Client::SERVER;
+    my $address = $rcpt->address;
+    $self->log(LOGINFO, "Checking deliverability for recipient '$address'");
 
-    if ($Qmail::Deliverable::Client::SERVER =~ /^smtproutes:/) {
-        my $domain = $rcpt->host;
-        my $server = _smtproute($domain);
-        if (not defined $server) {
-            if ($Qmail::Deliverable::Client::SERVER !~ /:.*:/) {
-                $self->log(LOGINFO, "No smtproute detected for $domain");
-                return DECLINED;
-            }
-            $self->log(LOGDEBUG, "Using default server for $domain");
-            $Qmail::Deliverable::Client::SERVER =~ s/^smtproutes://;
-        } else {
-            $self->log(LOGDEBUG, "Using server $server for $domain");
-            $Qmail::Deliverable::Client::SERVER =~ s/^smtproutes:(.*?:)?/$server:/;
-        }
-    }
+    $shared_domain = $rcpt->host;
 
-    my $rv = deliverable $rcpt->address;
+    my $rv = deliverable $address;
 
     if (not defined $rv or not length $rv) {
-        $self->log(LOGDEBUG, "Unknown error.");
+        $self->log(LOGWARN, "Unknown error.");
         return DECLINED;
     }
 
@@ -129,7 +167,8 @@ sub rcpt_handler {
                                                                  if $rv == 0x21;
     $self->log(LOGINFO, "Temporarily undeliverable: sticky home directory"),$k++
                                                                  if $rv == 0x22;
-    $self->log(LOGINFO, $Qmail::Deliverable::Client::ERROR),$k++ if $rv == 0x2f;
+    $self->log(LOGINFO, "Error: $Qmail::Deliverable::Client::ERROR"), $k++
+                                                                 if $rv == 0x2f;
     $self->log(LOGINFO, "Normal delivery"),                 $k++ if $rv == 0xf1;
     $self->log(LOGINFO, "Deliverable through vpopmail"),    $k++ if $rv == 0xf2;
     $self->log(LOGINFO, "SHOULD NOT HAPPEN"),               $k++ if $rv == 0xfe;
@@ -144,11 +183,19 @@ sub rcpt_handler {
 sub _smtproute {
     my ($domain) = @_;
     my @parts = split /\./, $domain;
+    if (exists $smtproutes{$domain}) {
+        return undef if $smtproutes{$domain} eq "";
+        return $smtproutes{$domain};
+    }
     for (reverse 1 .. @parts) {
         my $wildcard = join "", map ".$_", @parts[-$_ .. -1];
-        return $smtproutes{$wildcard} if exists $smtproutes{$wildcard};
+        if (exists $smtproutes{$wildcard}) {
+            return undef if $smtproutes{$wildcard} eq "";
+            return $smtproutes{$wildcard};
+        }
     }
-    return $smtproutes{""} if exists $smtproutes{""};
-    return undef;
+    return undef if not exists $smtproutes{""};
+    return undef if $smtproutes{""} eq "";
+    return $smtproutes{""};
 }
 
