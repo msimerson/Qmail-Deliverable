@@ -1,5 +1,13 @@
 Revision history for Perl extension Qmail::Deliverable.
 
+1.03
+        - qmail-deliverabled now takes a pidfile on the command line, and can
+          stop itself using that.
+        - Added Qmail::Deliverable::Comparison to compare with other Qmail
+          deliverability checkers.
+        - Now correctly loads "me" if "locals" does not exist.
+        - Provided an example init.d script.
+
 1.02
         - Support for bouncesaying, although without using the configured
           error message. Plesk puts |bouncesaying in .qmail-default.

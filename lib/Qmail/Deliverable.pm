@@ -5,7 +5,7 @@ use 5.006;
 use Carp qw(carp);
 use base 'Exporter';
 
-our $VERSION = '1.02';
+our $VERSION = '1.03';
 our @EXPORT_OK = qw/reread_config qmail_local dot_qmail deliverable qmail_user/;
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 
@@ -44,7 +44,10 @@ sub reread_config {
     %virtualdomains = ();
     %users_exact    = ();
     %users_wild     = ();
-    for (_slurp "/var/qmail/control/locals") {
+    my $locals_fn = -e "/var/qmail/control/locals"
+        ? "/var/qmail/control/locals"
+        : "/var/qmail/control/me";
+    for (_slurp $locals_fn) {
         chomp;
         ($_) = lc =~ /$ascii/ or do { warn "Invalid character"; next; };
         $locals{$_} = 1;
