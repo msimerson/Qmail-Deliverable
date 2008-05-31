@@ -20,12 +20,12 @@ PIDFILE=/var/run/qmail-deliverabled.pid
 case "$1" in
   start)
     echo -n "Starting qmail-deliverabled"
-    qmail-deliverabled $LISTEN $PIDFILE
+    qmail-deliverabled --listen $LISTEN --pidfile $PIDFILE
     echo ".";
   ;;
   stop)
     echo -n "Stopping qmail-deliverabled"
-    qmail-deliverabled stop $PIDFILE
+    qmail-deliverabled --stop --pidfile $PIDFILE
     echo ".";
   ;;
   restart)

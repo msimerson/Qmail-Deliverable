@@ -5,7 +5,7 @@ use 5.006;
 use Carp qw(carp);
 use base 'Exporter';
 
-our $VERSION = '1.03';
+our $VERSION = '1.05';
 our @EXPORT_OK = qw/reread_config qmail_local dot_qmail deliverable qmail_user/;
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 
@@ -24,8 +24,11 @@ my $shell_token = qr/(\\.|$shell_sq|$shell_dq|$shell_bare)+/;
 
 sub _readpipe {
     my ($command, @args) = @_;
+    local %ENV = ();
     open my $fh, '-|', $command, @args or die "open: @_: $!";
-    return wantarray ? readline $fh : join("", readline $fh);
+    my @data = readline $fh;
+    close $fh;  # Without explicit close, $? is unreliable later
+    return wantarray ? @data : join("", @data);
 }
 
 sub _slurp {
@@ -33,6 +36,24 @@ sub _slurp {
     open my $fh, '<', $fn or return;
     return wantarray ? readline $fh : join("", readline $fh);
 }
+
+sub _first (&@) {
+    my $sub = shift;
+    $sub->($_) and return $_ for @_;
+    return;
+}
+
+sub _findinpath {
+    my ($command) = @_;
+    # Attempt to retain some level of security against PATH attacks
+    my @path = grep defined, map /($ascii)/,  # untaint
+        grep m{^/[^<>|]+$}, split /:/, $ENV{PATH};
+    return _first { -x $_ } map "$_/$command", @path;
+}
+
+# Resolve only once to further reduce risk of PATH attacks
+my $valias_exec = _findinpath 'valias';
+my $vuser_exec = _findinpath 'vuserinfo';
 
 my %locals;
 my %virtualdomains;
@@ -76,7 +97,6 @@ sub reread_config {
 sub _qmail_getpw {
     my ($local) = @_;
     local $/ = "\0";
-    local %ENV = ();
     my @a = _readpipe "/var/qmail/bin/qmail-getpw", $local;
     chomp @a;
     for (@a) {
@@ -99,6 +119,27 @@ sub _prepend {
     return $virtualdomains{''} if exists $virtualdomains{''};
     return undef;
 }
+
+sub _potential_exts {
+    my ($ext) = @_;
+    my @exts;
+
+    # Exact match has highest precedence
+    push @exts, $ext;
+
+    # Then foo-default
+    my @parts = split /(-)/, $ext;
+    for (reverse 1 .. $#parts) {
+        next unless $parts[$_] eq '-';
+        push @exts, join("", @parts[0..$_]) . "default";
+    }
+
+    # Then catch all
+    push @exts, "default";
+
+    return @exts;
+}
+
 
 sub qmail_user {
     my ($in) = @_;
@@ -159,18 +200,37 @@ sub dot_qmail {
         return "";  # defaultdelivery
     }
 
-    return "$homedir/.qmail-$ext" if -e "$homedir/.qmail-$ext";
-
-    my @parts = split /(-)/, $ext;
-    for (reverse 1 .. $#parts) {
-        next unless $parts[$_] eq '-';
-        my $default = join "", @parts[0 .. $_];
-        my $dot_qmail = "$homedir/.qmail-$default" . "default";
-        return $dot_qmail if -e $dot_qmail;
+    for (_potential_exts $ext) {
+        return "$homedir/.qmail-$_" if -e "$homedir/.qmail-$_";
     }
-    return "$homedir/.qmail-default" if -e "$homedir/.qmail-default";
 
     return undef;
+}
+
+sub valias {
+    my ($address) = @_;
+    if (not $valias_exec) {
+        warn "Cannot check valias; valias executable not found";
+        return 0;
+    }
+    my ($local, $domain) = split /\@/, $address;
+    my $counter = 0;
+    for (_potential_exts $local) {
+        eval { _readpipe $valias_exec, "$_\@$domain" };
+        return ++$counter if $? == 0;
+    }
+    return 0;
+}
+
+sub vuser {
+    my ($address) = @_;
+    if (not $vuser_exec) {
+        warn "Cannot check vuser; vuser executable not found";
+        return 0;
+    }
+    eval { _readpipe $vuser_exec, $address } or return 0;
+    return 1 if $? == 0;
+    return 0;
 }
 
 sub deliverable {
@@ -205,11 +265,15 @@ sub deliverable {
             carp "vpopmail support not available if no domain given";
             return 0xfe;
         }
-        my $origlocal = (split /\@/, $address)[0];
 
-        return 0xf2 unless $dot_qmail[0] =~ /bounce-no-mailbox/;
-        return 0xf2 if -d "$homedir/$origlocal";
-        return 0x00;
+        if ($dot_qmail[0] =~ /bounce-no-mailbox/) {
+            my $origlocal = (split /\@/, $address)[0];
+            return 0xf2 if -d "$homedir/$origlocal";
+            return 0xf3 if valias $address;
+            return 0xf2 if vuser $address;
+            return 0x00;
+        }
+        return 0xf4;
     }
     if ($dot_qmail[0] =~ /^\|bouncesaying\s+(.*)/) {
         my @args = $1 =~ /$shell_token/g;
@@ -223,6 +287,11 @@ sub deliverable {
 }
 
 reread_config;
+
+# use Memoize;
+# use Memoize::Expire;
+# tie my %deliverable_cache, 'Memoize::Expire', LIFETIME => 60;
+# memoize 'deliverable';
 
 1;
 
@@ -329,7 +398,9 @@ Possible return values are:
     0x22   Temporarily undeliverable: homedir is sticky
 
     0xf1   Deliverable, almost certainly
-    0xf2   Deliverable, vdelivermail: directory or catch all exists
+    0xf2   Deliverable, vdelivermail: directory exists
+    0xf3   Deliverable, vdelivermail: valias exists
+    0xf4   Deliverable, vdelivermail: catch-all defined
 
     0xfe   vpopmail (vdelivermail) detected but no domain was given
     0xff   Domain is not local
@@ -357,10 +428,10 @@ Re-reads the config files /var/qmail/control/locals,
 
 =head1 CAVEATS
 
-Although C<bouncesaying> and C<vpopmail's vdeliver> special cased, normally if
-you have a catch-all .qmail-default and let a program do all the work, this
-module cannot determine deliverability in a useful way, because it would need
-to execute the program. It failsafes by allowing delivery.
+Although C<bouncesaying> and C<vpopmail's vdeliver> are special cased, normally
+if you have a catch-all .qmail-default and let a program do all the work, this
+module cannot determine deliverability in a useful way, because it would
+need to execute the program. It failsafes by allowing delivery.
 
 This module does NOT support user-ext characters other than hyphen (dash). i.e.
 ".qmail+default" is not supported.
@@ -385,10 +456,44 @@ Don't forget to escape C<@> as C<\@> when testing with double quoted strings.
 =head1 PERFORMANCE
 
 The server on which I benchmarked this, easily reached 10_000 deliverability
-checks per second for assigned/virtual users. Real users are much slower
-because they are checked with qmail-getpw: around 200 checks per second. For my
-needs, this is still plenty fast enough. If you need it faster, you can use
-C<qmail-pw2u> to build a users/assign file.
+checks per second for assigned/virtual users. Real and virtual users are much
+slower. For my needs, this is still plenty fast enough.
+
+To support local users automatically, C<qmail-getpw> is executed for local
+addresses that are not matched by /var/qmail/users/assign. If you need it
+faster, you can use C<qmail-pw2u> to build a users/assign file.
+
+To support vpopmail's vdelivermail instruction, C<valias> is executed for
+virtual email addresses, to test if a valias exists. If performance is a big
+issue, you could monkeypatch the valias subroutine in this module to access
+mysql directly, or if you don't use the valias mechanism at all, to always
+return false. (Or chmod -x all valias executables in your path.) Valias
+checking is only used for vdelivermail instructions, and does not impose
+performance penalties on non-vpopmail systems.
+
+To support vpopmail's vdelivermail instruction on systems that use a "hashed"
+user directory tree, C<vuserinfo> is executed for virtual email addresses, to
+test if a virtual user exists. To optimize the common case, this is only done
+if a directory with the same name as the local-part does not exist. Such
+directories are made by vpopmail for the first 100 users in a virtual
+domain. If performance is a big issue, you could monkeypatch the vuser
+subroutine in this module to access mysql directly. Vuser checking is only
+used for vdelivermail instructions, and does not impose performance
+penalties on non-vpopmail systems.
+
+Rough linear performance benchmark of C<deliverable> on our test machine:
+
+    vpopmail domain, vuser with top level dir   11000/s
+    vpopmail domain, valias exists               1500/s
+    vpopmail domain, vuser with hashed dir       1400/s
+    vpopmail domain, address unknown             1400/s
+    local, user listed in users/assign          15000/s
+    local, user exists, not listed               2000/s
+    local, user unknown                          1800/s
+    experimental caching enabled               200000/s
+
+To play with the experimental caching, see the four commented lines in the
+source code.
 
 =head1 UNICODE SUPPORT
 

@@ -271,21 +271,14 @@ http://www.nntp.perl.org/group/perl.qpsmtpd/2005/06/msg3174.html
 
 http://www.redhotpenguin.com/check_delivery
 
-=item check_validrcptto_cdb plugin for qpsmtpd
-
-Written in Perl, checks against a CDB. Together with mkvalidrcptto, qualifies
-as level 3.
-
-http://robinbowes.com/projects/check_validrcptto_cdb
-
 =back
 
 =head3 Level 4
 
 Level 4 solutions do everything that level 3 solutions do, but also support
-qmail-send logic. That is: email for domains not in C<virtualdomains> or
-C<locals> is I<accepted>, so it can be relayed to another server. This makes
-the solutions (almost) drop-in compatible with most qmail setups.
+qmail-send logic. That is: non-local email is I<accepted>, so that it can be
+relayed to another server. This makes the solutions (almost) drop-in compatible
+with most qmail setups.
 
 =over 4
 
@@ -317,6 +310,13 @@ host. That's almost sufficient for using the client on a mail hub, which
 requires some kind of domain to qmail-verify host mapping.
 
 http://www.nwdb.co.uk/email/qmail-verify.html
+
+=item check_validrcptto_cdb plugin for qpsmtpd
+
+Written in Perl, checks against a CDB. Together with mkvalidrcptto, qualifies
+as level 4.
+
+http://robinbowes.com/projects/check_validrcptto_cdb
 
 =item check_qmail_deliverable plugin for qpsmtpd
 
