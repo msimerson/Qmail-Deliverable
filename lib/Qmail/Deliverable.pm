@@ -5,7 +5,7 @@ use 5.006;
 use Carp qw(carp);
 use base 'Exporter';
 
-our $VERSION = '1.05';
+our $VERSION = '1.06';
 our @EXPORT_OK = qw/reread_config qmail_local dot_qmail deliverable qmail_user/;
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 
@@ -265,9 +265,14 @@ sub deliverable {
             carp "vpopmail support not available if no domain given";
             return 0xfe;
         }
+        my $origlocal = (split /\@/, $address)[0];
+
+        # Update domain with user field in assign file, just like vpopmail
+        # does. This way we support alias domains. See vpopmail.c,
+        # vget_assign().
+        $address = $origlocal . '@' . $user;
 
         if ($dot_qmail[0] =~ /bounce-no-mailbox/) {
-            my $origlocal = (split /\@/, $address)[0];
             return 0xf2 if -d "$homedir/$origlocal";
             return 0xf3 if valias $address;
             return 0xf2 if vuser $address;

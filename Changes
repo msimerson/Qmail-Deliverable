@@ -1,6 +1,8 @@
 # Revision history for Perl extension Qmail::Deliverable.
 # The format for this changelog is described at http://use.perl.org/~hex/journal/34882
 
+VERSION:      1.06
+new:          Support for vpopmail vaddaliasdomain.
 
 VERSION:      1.05
 new:          Support for vpopmail valias address extensions (foo-default).

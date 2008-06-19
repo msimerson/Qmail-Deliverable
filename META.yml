@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                Qmail-Deliverable
-version:             1.05
+version:             1.06
 abstract:            Determine deliverability of local addresses
 license:             ~
 author:              
