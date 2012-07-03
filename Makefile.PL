@@ -8,5 +8,5 @@ WriteMakefile(
     PREREQ_PM         => {},
     ABSTRACT_FROM  => 'lib/Qmail/Deliverable.pm', # retrieve abstract from module
     AUTHOR         => 'Juerd Waalboer <#####@juerd.nl>',
-    EXE_FILES => [ "bin/qmail-deliverabled", "qpsmtpd-plugin/check_qmail_deliverable" ],
+    EXE_FILES => [ "bin/qmail-deliverabled", "qpsmtpd-plugin/qmail_deliverable" ],
 );
