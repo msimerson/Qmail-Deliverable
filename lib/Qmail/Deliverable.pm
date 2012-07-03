@@ -5,7 +5,7 @@ use 5.006;
 use Carp qw(carp);
 use base 'Exporter';
 
-our $VERSION = '1.06';
+our $VERSION = '1.07';
 our @EXPORT_OK = qw/reread_config qmail_local dot_qmail deliverable qmail_user/;
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 
@@ -125,9 +125,9 @@ sub _potential_exts {
     my @exts;
 
     # Exact match has highest precedence
-    push @exts, $ext;
+    push @exts, $ext;  # user, or user-ext
 
-    # Then foo-default
+    # Then user-default
     my @parts = split /(-)/, $ext;
     for (reverse 1 .. $#parts) {
         next unless $parts[$_] eq '-';
@@ -213,12 +213,8 @@ sub valias {
         warn "Cannot check valias; valias executable not found";
         return 0;
     }
-    my ($local, $domain) = split /\@/, $address;
-    my $counter = 0;
-    for (_potential_exts $local) {
-        eval { _readpipe $valias_exec, "$_\@$domain" };
-        return ++$counter if $? == 0;
-    }
+    eval { _readpipe $valias_exec, $address };
+    return 1 if $? == 0;
     return 0;
 }
 
@@ -241,8 +237,7 @@ sub deliverable {
     my $local = qmail_local $address;
     return 0xff if not defined $local;
 
-    my ($user, $uid, $gid, $homedir, $dash, $ext)
-        = qmail_user $local;
+    my ($user, $uid, $gid, $homedir, $dash, $ext) = qmail_user $local;
 
     return 0x11 if not -r $homedir or not -x _;
     return 0x21 if (stat _)[2] & 0020;  # group writable
@@ -275,7 +270,12 @@ sub deliverable {
         if ($dot_qmail[0] =~ /bounce-no-mailbox/) {
             return 0xf2 if -d "$homedir/$origlocal";
             return 0xf3 if valias $address;
-            return 0xf2 if vuser $address;
+            return 0xf5 if vuser $address;
+            my ($local, $domain) = split /@/, $address;
+            my @chunks = split /\-/, $local; # vpopmails qmail-ext option
+            for ( 0 .. $#chunks ) {
+                return 0xf6 if vuser $chunks[$_] .'@'.$domain;
+            };
             return 0x00;
         }
         return 0xf4;
@@ -406,6 +406,8 @@ Possible return values are:
     0xf2   Deliverable, vdelivermail: directory exists
     0xf3   Deliverable, vdelivermail: valias exists
     0xf4   Deliverable, vdelivermail: catch-all defined
+    0xf5   Deliverable, vdelivermail: vuser exists
+    0xf6   Deliverable, vdelivermail: qmail-ext
 
     0xfe   vpopmail (vdelivermail) detected but no domain was given
     0xff   Domain is not local
