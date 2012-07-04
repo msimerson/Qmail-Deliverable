@@ -38,6 +38,13 @@ Example:
 Use "smtproutes:8998" (no second colon) to simply skip the deliverability
 check for domains not listed in smtproutes.
 
+=item vpopmail_ext [ 0 | 1 ]
+
+Is vpopmail configured with the qmail-ext feature enabled? If so, this config
+option must be enabled in order for user-ext@example.org addresses to work.
+
+Default: 0
+
 =back
 
 =head1 CAVEATS
@@ -144,6 +151,10 @@ sub register {
         } elsif ($args{server}) {
             $Qmail::Deliverable::Client::SERVER = $args{server};
         }
+
+        if ( $args{vpopmail_ext} ) {
+            $Qmail::Deliverable::VPOPMAIL_EXT = $args{vpopmail_ext};
+        };
     }
     $self->register_hook("rcpt", "rcpt_handler");
 }
@@ -161,7 +172,7 @@ sub rcpt_handler {
     my $rv = deliverable $address;
 
     if (not defined $rv or not length $rv) {
-        $self->log(LOGWARN, "Unknown error checking '$address'");
+        $self->log(LOGWARN, "error (unknown) checking '$address'");
         return DECLINED;
     }
 
@@ -181,13 +192,15 @@ sub rcpt_handler {
     $self->log(LOGINFO, "pass, vpopmail catchall"),         $k++ if $rv == 0xf4;
     $self->log(LOGINFO, "pass, vpopmail vuser"),            $k++ if $rv == 0xf5;
     $self->log(LOGINFO, "pass, vpopmail qmail-ext"),        $k++ if $rv == 0xf6;
-    $self->log(LOGINFO, "SHOULD NOT HAPPEN"),               $k++ if $rv == 0xfe;
+    $self->log(LOGINFO, "error, SHOULD NOT HAPPEN"),        $k++ if $rv == 0xfe;
     $self->log(LOGINFO, "fail, address not local"),         $k++ if $rv == 0xff;
 
-    $self->log(LOGINFO, sprintf("Unknown: 0x%02x", $rv)) if $rv and not $k;
+    if ( $rv ) {
+        $self->log(LOGINFO, sprintf("error, unknown: 0x%02x", $rv)) if not $k;
+        return DECLINED;
+    };
 
-    return DECLINED if $rv;
-    return (DENY, "fail, no mailbox by that name. qd (#5.1.1)" );
+    return (DENY, "Sorry, no mailbox by that name. qd (#5.1.1)" );
 }
 
 sub _smtproute {

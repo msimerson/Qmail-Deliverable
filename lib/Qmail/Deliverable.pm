@@ -8,6 +8,7 @@ use base 'Exporter';
 our $VERSION = '1.07';
 our @EXPORT_OK = qw/reread_config qmail_local dot_qmail deliverable qmail_user/;
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
+our $VPOPMAIL_EXT = 0;
 
 # rfc2822's "atext"
 my $atext = "[A-Za-z0-9!#\$%&\'*+\/=?^_\`{|}~-]";
@@ -134,9 +135,6 @@ sub _potential_exts {
         push @exts, join("", @parts[0..$_]) . "default";
     }
 
-    # Then catch all
-    push @exts, "default";
-
     return @exts;
 }
 
@@ -200,7 +198,7 @@ sub dot_qmail {
         return "";  # defaultdelivery
     }
 
-    for (_potential_exts $ext) {
+    for ( _potential_exts($ext), 'default' ) {
         return "$homedir/.qmail-$_" if -e "$homedir/.qmail-$_";
     }
 
@@ -213,8 +211,11 @@ sub valias {
         warn "Cannot check valias; valias executable not found";
         return 0;
     }
-    eval { _readpipe $valias_exec, $address };
-    return 1 if $? == 0;
+    my ($local, $domain) = split /\@/, $address;
+    for ( _potential_exts($local) ) {
+        eval { _readpipe( $valias_exec, "$_\@$domain") };
+        return 1 if $? == 0;
+    };
     return 0;
 }
 
@@ -271,10 +272,12 @@ sub deliverable {
             return 0xf2 if -d "$homedir/$origlocal";
             return 0xf3 if valias $address;
             return 0xf5 if vuser $address;
-            my ($local, $domain) = split /@/, $address;
-            my @chunks = split /\-/, $local; # vpopmails qmail-ext option
-            for ( 0 .. $#chunks ) {
-                return 0xf6 if vuser $chunks[$_] .'@'.$domain;
+            if ( $VPOPMAIL_EXT ) {
+                my ($local, $domain) = split /@/, $address;
+                my @chunks = split /\-/, $local; # vpopmails qmail-ext option
+                for ( 0 .. $#chunks ) {
+                    return 0xf6 if vuser $chunks[$_] .'@'.$domain;
+                };
             };
             return 0x00;
         }
