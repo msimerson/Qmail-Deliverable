@@ -1,6 +1,12 @@
 # Revision history for Perl extension Qmail::Deliverable.
 # The format for this changelog is described at http://use.perl.org/~hex/journal/34882
 
+VERSION:      1.07
+fix:          default@example.org in vpopmail/valias now works as intended.
+new:          Support for vpopmail user-ext (disabled by default).
+change:       The plugin check_qmail_deliverable lost its "check_" prefix.
+info:         This version was provided by Matt Simerson.
+
 VERSION:      1.06
 new:          Support for vpopmail vaddaliasdomain.
 

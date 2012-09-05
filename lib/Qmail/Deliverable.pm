@@ -417,6 +417,9 @@ Possible return values are:
 
 (These values are, currently, not bitmasks. Do not treat them as such.)
 
+For qmail-ext support (a vpopmail feature that is disabled by default), set
+C<$Qmail::Deliverable::VPOPMAIL_EXT = 1>.
+
 Status 0x12 is returned if any command is found in a dot-qmail file, regardless
 of its position relative to mailbox, maildir, and forward instructions.
 
