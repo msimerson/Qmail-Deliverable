@@ -289,6 +289,7 @@ sub deliverable {
         return 0x00;
     }
 
+    return 0x14 if grep /ezmlm/, @dot_qmail;
     return 0x12 if grep /^\|/, @dot_qmail;
 
     return 0xf1;
@@ -401,6 +402,7 @@ Possible return values are:
     0x11   Deliverability unknown: permission denied for any file
     0x12   Deliverability unknown: qmail-command called in dot-qmail file
     0x13   Deliverability unknown: bouncesaying with program
+    0x14   Deliverable, probable:  ezmlm mailing list
 
     0x21   Temporarily undeliverable: group/world writable
     0x22   Temporarily undeliverable: homedir is sticky
