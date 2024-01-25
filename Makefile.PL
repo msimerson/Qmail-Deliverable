@@ -10,4 +10,7 @@ WriteMakefile(
     AUTHOR         => 'Juerd Waalboer <#####@juerd.nl>',
     EXE_FILES      => [ 'bin/qmail-deliverabled', 'qpsmtpd-plugin/qmail_deliverable' ],
     LICENSE        => 'perl_5',
+    TEST_REQUIRES  => {
+            'LWP::Simple' => 0,
+        },
 );
