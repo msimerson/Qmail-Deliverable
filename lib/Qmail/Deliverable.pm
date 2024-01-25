@@ -5,7 +5,7 @@ use 5.006;
 use Carp qw(carp);
 use base 'Exporter';
 
-our $VERSION = '1.07';
+our $VERSION = '1.08';
 our @EXPORT_OK = qw/reread_config qmail_local dot_qmail deliverable qmail_user/;
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 our $VPOPMAIL_EXT = 0;
@@ -516,8 +516,19 @@ the circumstances. Please email me.
 
 =head1 LEGAL
 
-This software is released into the public domain, and does not come with
-warranty or guarantee of any kind. Use it at your own risk.
+This software does not come with warranty or guarantee of any kind. Use it at
+your own risk.
+
+This software may be redistributed under the terms of the GPL, LGPL, modified
+BSD, or Artistic license, or any of the other OSI approved licenses listed at
+http://www.opensource.org/licenses/alphabetical. Distribution is allowed under
+all of these these licenses, or any smaller subset of multiple or just one of
+these licenses.
+
+When using a packaged version, please refer to the package metadata to see
+under which license terms it was distributed. Alternatively, a distributor may
+choose to replace the LICENSE section of the documentation and/or include a
+LICENSE file to reflect the license(s) they chose to redistribute under.
 
 =head1 AUTHOR
 
