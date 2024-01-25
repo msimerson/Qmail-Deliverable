@@ -28,6 +28,6 @@ sub test_qmail_user {
 	is_deeply(
 		\@r,
 		[ 'vpopmail', '89', '89', 't/fixtures/domains/example.com', '-', 'luser-ext@example.com' ],
-		"qmail_user: $r"
+		"qmail_user: $r[5]"
 	);
 }
