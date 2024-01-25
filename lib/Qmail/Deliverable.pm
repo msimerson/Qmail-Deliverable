@@ -5,7 +5,7 @@ use 5.006;
 use Carp qw(carp);
 use base 'Exporter';
 
-our $VERSION = '1.07';
+our $VERSION = '1.08';
 our @EXPORT_OK = qw/reread_config qmail_local dot_qmail deliverable qmail_user/;
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 our $VPOPMAIL_EXT = 0;
@@ -151,7 +151,7 @@ sub qmail_user {
             my $try = substr $local, 0, $_;
             if (exists $users_wild{$try}) {
                 my @assign = split /:/, $users_wild{$try}, 7;
-                $assign[5] = substr($local, $_) . $assign[5];
+                $assign[5] .= substr($local, $_);
                 return @assign;
             }
         }

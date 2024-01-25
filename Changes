@@ -1,6 +1,10 @@
 # Revision history for Perl extension Qmail::Deliverable.
 # The format for this changelog is described at http://use.perl.org/~hex/journal/34882
 
+VERSION:      1.08
+fix:          fix interpretation of wildcard assignments [rt.cpan.org #131280]
+info:         This version was provided by Martin Sluka.
+
 VERSION:      1.07
 fix:          default@example.org in vpopmail/valias now works as intended.
 new:          Support for vpopmail user-ext (disabled by default).
