@@ -146,7 +146,7 @@ The server on which I benchmarked this, the client+daemon combination (on
 localhost) reached 300 deliverability checks per second for assigned/virtual
 users. Real users are slower: around 150 checks per second.
 
-=head1 LEGAL
+=head1 LICENSE
 
 This software does not come with warranty or guarantee of any kind. Use it at
 your own risk.

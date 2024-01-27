@@ -25,3 +25,9 @@ DEPENDENCIES
 
 This module requires a functional qmail installation in its standard location,
 /var/qmail.
+
+COPYRIGHT
+
+Copyright (C) 2024 by Matt Simerson
+Copyright (C) 2007 by Juerd Waalboer
+
