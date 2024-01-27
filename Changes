@@ -2,8 +2,7 @@
 # The format for this changelog is described at http://use.perl.org/~hex/journal/34882
 
 VERSION:      1.08
-fix:          fix interpretation of wildcard assignments [rt.cpan.org #131280]
-info:         This version was provided by Martin Sluka.
+change:       License change only.
 
 VERSION:      1.07
 fix:          default@example.org in vpopmail/valias now works as intended.
