@@ -1,6 +1,10 @@
 # Revision history for Perl extension Qmail::Deliverable.
 # The format for this changelog is described at http://use.perl.org/~hex/journal/34882
 
+VERSION:      1.10
+new:          added end to end testing
+
+
 VERSION:      1.09
 new:          detect ezmlm lists, reject null senders to lists
 new:          correctly ignore comments in qmail/users/assign #3
