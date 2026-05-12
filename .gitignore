@@ -3,3 +3,4 @@ cover_db
 Makefile
 Makefile.old
 pm_to_blib
+MYMETA.*

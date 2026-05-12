@@ -538,5 +538,24 @@ LICENSE file to reflect the license(s) they chose to redistribute under.
 
 =head1 AUTHORS
 
-Matt Simerson <msimerson@cpan.org>
-Juerd Waalboer <#####@juerd.nl>
+=over 4
+
+=item *
+
+Juerd Waalboer <#####@juerd.nl> (original author)
+
+=item *
+
+Matt Simerson <msimerson@cpan.org> (current maintainer)
+
+=back
+
+=head1 CONTRIBUTORS
+
+=over 4
+
+=item *
+
+Martin Sluka (1.09)
+
+=back

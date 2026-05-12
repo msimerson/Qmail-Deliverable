@@ -1,5 +1,5 @@
 bin/qmail-deliverabled
-Changes
+Changes.md
 init.d/qmail-deliverabled
 lib/Qmail/Deliverable.pm
 lib/Qmail/Deliverable/Client.pm
@@ -8,7 +8,7 @@ Makefile.PL
 MANIFEST
 META.yml
 qpsmtpd-plugin/qmail_deliverable
-README
+README.md
 t/00.syntax.t
 t/10.helpers.t
 t/20.qmail_local.t
