@@ -5,7 +5,7 @@ use 5.006;
 use Carp qw(carp);
 use base 'Exporter';
 
-our $VERSION = '1.08';
+our $VERSION = '1.10';
 our @EXPORT_OK = qw/reread_config qmail_local dot_qmail deliverable qmail_user/;
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 our $VPOPMAIL_EXT = 0;
@@ -538,5 +538,24 @@ LICENSE file to reflect the license(s) they chose to redistribute under.
 
 =head1 AUTHORS
 
-Matt Simerson <msimerson@cpan.org>
-Juerd Waalboer <#####@juerd.nl>
+=over 4
+
+=item *
+
+Juerd Waalboer <#####@juerd.nl> (original author)
+
+=item *
+
+Matt Simerson <msimerson@cpan.org> (current maintainer)
+
+=back
+
+=head1 CONTRIBUTORS
+
+=over 4
+
+=item *
+
+Martin Sluka (1.09)
+
+=back
