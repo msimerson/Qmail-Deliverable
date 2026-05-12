@@ -19,5 +19,6 @@ foreach my $glob ( @moduleGlobs ) {
 use lib 'lib';
 use_ok('Qmail::Deliverable');
 use_ok('Qmail::Deliverable::Client');
+use_ok('Qmail::Deliverable::Status');
 
 done_testing();

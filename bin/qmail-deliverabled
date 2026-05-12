@@ -3,28 +3,23 @@ use strict;
 
 use HTTP::Daemon;
 use HTTP::Status;
+use POSIX ();
 use URI::Escape qw(uri_unescape);
 use Qmail::Deliverable ':all';
 use Getopt::Long;
 Getopt::Long::Configure("bundling");
 
-my ($listen, $pidfile, $verbose, $stop, $foreground);
-$listen = "127.0.0.1:8998";
+my ($pidfile, $verbose, $stop, $foreground);
+my $listen = "127.0.0.1:8998";
 
-if (@ARGV and $ARGV[0] !~ /^-/) {
-    warn "WARNING: Using deprecated old style command line argument parsing. Update your startup scripts!\n";
-
-    ($listen, $pidfile) = @ARGV;
-} else {
-    GetOptions(
-        "help|h"       => sub { die "Use 'man qmail-deliverabled' for full documentation.\n" },
-        "verbose|v"    => \$verbose,
-        "listen|l=s"   => \$listen,
-        "pidfile|p:s"  => \$pidfile,
-        "stop"         => \$stop,
-        "foreground|f" => \$foreground,
-    ) or exit 255;
-}
+GetOptions(
+    "help|h"       => sub { die "Use 'man qmail-deliverabled' for full documentation.\n" },
+    "verbose|v"    => \$verbose,
+    "listen|l=s"   => \$listen,
+    "pidfile|p:s"  => \$pidfile,
+    "stop"         => \$stop,
+    "foreground|f" => \$foreground,
+) or exit 255;
 
 ($listen) = $listen =~ /^(stop|[0-9.]+:[0-9]+)$/
     or die "Listen argument must be ip:port!\n";
@@ -50,27 +45,42 @@ if ($stop or $listen eq 'stop') {
     exit;
 }
 
-
-fork && exit unless $foreground;
-
-$verbose && print "My PID is $$.\n";
-
+# Bind the listener before daemonizing so any "address already in use"
+# error surfaces in the foreground where the operator can see it.
 my $d = HTTP::Daemon->new(
     LocalAddr => $listen,
     ReuseAddr => 1,
-) or die "Could not start daemon ($!)";
+) or die "Could not start daemon ($!)\n";
 
-if ($pidfile) {
-    open my $fh, '>', $pidfile or die "Could not open pidfile $pidfile: $!\n";
-    print { $fh } $$;
-    close $fh or die "Could not write to pidfile $pidfile: $!\n";
+daemonize() unless $foreground;
+
+# pidfile is written AFTER daemonization so it records the final PID.
+# Only the surviving (grand)child reaches this point.
+my $cleanup_pidfile;
+END {
+    unlink $cleanup_pidfile
+        if defined $cleanup_pidfile && -e $cleanup_pidfile;
 }
 
-$SIG{HUP} = sub {
+if ($pidfile) {
+    open my $fh, '>', $pidfile
+        or die "Could not open pidfile $pidfile: $!\n";
+    print { $fh } $$
+        or die "Could not write to pidfile $pidfile: $!\n";
+    close $fh
+        or die "Could not close pidfile $pidfile: $!\n";
+    $cleanup_pidfile = $pidfile;
+}
+
+$SIG{TERM} = $SIG{INT} = sub { exit 0 };
+$SIG{HUP}  = sub {
     warn "SIGHUP received.\n";
     reread_config;
     warn "Qmail configuration reloaded.\n";
 };
+$SIG{PIPE} = 'IGNORE';  # broken client mid-response should not kill us
+
+$verbose && print "My PID is $$.\n";
 
 my ($base0) = $0 =~ /([\x20-\x7f]+)/;
 my %counter;
@@ -84,7 +94,8 @@ for (;;) {
         $verbose && printf "Accepted request from %vd.\n", $c->peeraddr;
         while (my $r = $c->get_request) {
             if ($r->method ne 'GET' or $r->uri->path !~ m[^/qd1/]) {
-                $verbose && printf "Not a qd request: %s %s\n", $r->method, $r->uri->path;
+                $verbose && printf "Not a qd request: %s %s\n",
+                                   $r->method, $r->uri->path;
                 $c->send_error(RC_FORBIDDEN);
                 next;
             }
@@ -107,30 +118,50 @@ for (;;) {
                 $verbose && printf "deliverable('%s') => ", $arg;
                 $rv = eval { deliverable($arg) };
                 $verbose && printf "0x%02x\n", $rv;
-                $counter{yes}++ if $rv;
-                $counter{no}++ if not $rv;
+                $counter{yes}++ if   $rv;
+                $counter{no}++  if ! $rv;
                 my $total = $counter{yes} + $counter{no};
                 $0 = sprintf "$base0 yes=%d(%.1f%%), no=%d(%.1f%%), total=%d",
                     $counter{yes}, $counter{yes}/$total*100,
                     $counter{no},  $counter{no} /$total*100,
                     $total;
-
             } else {
-                $verbose && print "Unknown command: %s\n", $command;
+                $verbose && printf "Unknown command: %s\n", $command;
                 $c->send_error(RC_FORBIDDEN);
                 next;
             }
             if (defined $rv) {
-                $c->send_response( HTTP::Response->new(200, "OK", undef, $rv) );
+                $c->send_response(
+                    HTTP::Response->new(200, "OK", undef, $rv));
             } else {
-                $c->send_response( HTTP::Response->new(204, "UNDEF", undef, "undef") );
+                $c->send_response(
+                    HTTP::Response->new(204, "UNDEF", undef, "undef"));
             }
-
         }
         $c->close;
         undef($c);
     }
     sleep 5;
+}
+
+# Standard double-fork daemonization: detaches from the controlling terminal,
+# becomes its own session leader, and redirects standard handles to /dev/null
+# so output from libraries doesn't end up on a terminal that no longer cares.
+sub daemonize {
+    my $pid = fork;
+    die "fork: $!\n" if not defined $pid;
+    exit 0 if $pid;             # original parent exits
+
+    POSIX::setsid() != -1 or die "setsid: $!\n";
+
+    $pid = fork;
+    die "fork: $!\n" if not defined $pid;
+    exit 0 if $pid;             # session leader exits
+
+    open STDIN,  '<', '/dev/null' or die "reopen STDIN: $!\n";
+    open STDOUT, '>', '/dev/null' or die "reopen STDOUT: $!\n";
+    open STDERR, '>', '/dev/null' or die "reopen STDERR: $!\n";
+    umask 0;
 }
 
 __END__
@@ -164,13 +195,30 @@ any error.
 A simple init.d-style script is provided in the .tar.gz, in the init.d
 directory.
 
+=head1 SIGNALS
+
+=over 4
+
+=item SIGHUP
+
+Re-read C</var/qmail/control/locals>, C</var/qmail/control/virtualdomains>,
+and C</var/qmail/users/assign> without restarting.
+
+=item SIGTERM, SIGINT
+
+Shut down cleanly. The pidfile (if any) is removed before exit.
+
+=back
+
 =head1 CAVEATS
 
 The PIDFILE is not used to avoid concurrent processes: it's perfectly fine to
 have multiple qmail-deliverableds running on different addresses or ports, but
 make sure each combination has its own PIDFILE.
 
-Verbose mode may get messy.
+Verbose mode is only useful when also running with C<--foreground>; once
+daemonized, standard handles are redirected to /dev/null and verbose output
+is silently discarded.
 
 =head1 LEGAL
 

@@ -14,7 +14,6 @@ WriteMakefile(
     VERSION_FROM      => 'lib/Qmail/Deliverable.pm', # finds $VERSION
     ABSTRACT_FROM     => 'lib/Qmail/Deliverable.pm', # retrieve abstract from module
     AUTHOR            => 'Matt Simerson <msimerson@cpan.org>',
-    LICENSE           => 'perl_5',
     MIN_PERL_VERSION  => '5.006',
     EXE_FILES         => [ 'bin/qmail-deliverabled', 'qpsmtpd-plugin/qmail_deliverable' ],
     PREREQ_PM         => {},
