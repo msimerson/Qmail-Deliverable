@@ -11,6 +11,11 @@ WriteMakefile(
     EXE_FILES      => [ 'bin/qmail-deliverabled', 'qpsmtpd-plugin/qmail_deliverable' ],
     LICENSE        => 'perl_5',
     TEST_REQUIRES  => {
-            'LWP::Simple' => 0,
+            'LWP::Simple'      => 0,
+            'LWP::UserAgent'   => 0,
+            'Test::More'       => 0,
+            'Test::Warn'       => 0,
+            'Test::MockModule' => 0,
+            'HTTP::Daemon'     => 0,
         },
 );
