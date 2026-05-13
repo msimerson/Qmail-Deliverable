@@ -4,7 +4,7 @@ use strict;
 use 5.006;
 use Exporter 'import';
 
-our $VERSION = '1.10';
+our $VERSION = '1.11';
 
 use constant {
     QD_NOT_DELIVERABLE         => 0x00,
