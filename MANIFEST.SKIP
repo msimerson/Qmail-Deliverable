@@ -1,2 +1,4 @@
 .claude
-Qmail-Deliverable-*.tar.gz
+.git
+Qmail-Deliverable-?.??.tar.gz
+cover_db
