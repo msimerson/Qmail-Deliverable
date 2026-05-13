@@ -9,6 +9,11 @@ my @authors = (
     'Martin Sluka',
 );
 
+my %dist = ();
+if ( $^O eq 'darwin' ) {
+    $dist{TAR} = 'COPY_EXTENDED_ATTRIBUTES_DISABLE=1 COPYFILE_DISABLE=1 tar';
+}
+
 WriteMakefile(
     NAME              => 'Qmail::Deliverable',
     VERSION_FROM      => 'lib/Qmail/Deliverable.pm', # finds $VERSION
@@ -43,4 +48,5 @@ WriteMakefile(
         },
         x_contributors => [ 'Martin Sluka' ],
     },
+    dist => \%dist,
 );
