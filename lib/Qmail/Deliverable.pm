@@ -4,10 +4,17 @@ use strict;
 use 5.006;
 use Carp qw(carp);
 use base 'Exporter';
+use Qmail::Deliverable::Status qw(:status);
 
-our $VERSION = '1.10';
-our @EXPORT_OK = qw/reread_config qmail_local dot_qmail deliverable qmail_user/;
-our %EXPORT_TAGS = (all => \@EXPORT_OK);
+our $VERSION = '1.11';
+our @EXPORT_OK = (
+    qw(reread_config qmail_local dot_qmail deliverable qmail_user),
+    @Qmail::Deliverable::Status::STATUS,
+);
+our %EXPORT_TAGS = (
+    all    => \@EXPORT_OK,
+    status => \@Qmail::Deliverable::Status::STATUS,
+);
 our $VPOPMAIL_EXT = 0;
 our $qmail_dir = '/var/qmail';
 
@@ -242,30 +249,30 @@ sub deliverable {
         or do { carp "Invalid address: $in"; return; };
 
     my $local = qmail_local $address;
-    return 0xff if not defined $local;
+    return QD_NOT_LOCAL if not defined $local;
 
     my ($user, $uid, $gid, $homedir, $dash, $ext) = qmail_user $local;
 
-    return 0x11 if not -r $homedir or not -x _;
-    return 0x21 if (stat _)[2] & 0020;  # group writable
-    return 0x21 if (stat _)[2] & 0002;  # world writable
-    return 0x22 if -T _;
+    return QD_UNKNOWN_PERM_DENIED     if not -r $homedir or not -x _;
+    return QD_TEMPFAIL_GROUP_WRITABLE if (stat _)[2] & 0020;
+    return QD_TEMPFAIL_GROUP_WRITABLE if (stat _)[2] & 0002;
+    return QD_TEMPFAIL_STICKY         if -k _;
 
     my $dot_qmail = dot_qmail $user, $uid, $gid, $homedir, $dash, $ext;
 
-    return 0x00 if not defined $dot_qmail;
-    return 0xf1 if not length $dot_qmail;  # no .qmail => defaultdelivery
+    return QD_NOT_DELIVERABLE if not defined $dot_qmail;
+    return QD_DELIVERABLE     if not length $dot_qmail;  # defaultdelivery
 
-    return 0x00 if not -e $dot_qmail;
-    return 0x11 if not -r $dot_qmail;
-    return 0xf1 if not -s _;  # empty => defaultdelivery
+    return QD_NOT_DELIVERABLE     if not -e $dot_qmail;
+    return QD_UNKNOWN_PERM_DENIED if not -r $dot_qmail;
+    return QD_DELIVERABLE         if not -s _;           # empty => defaultdelivery
 
     my @dot_qmail = _slurp $dot_qmail;
 
     if ($dot_qmail[0] =~ /^\|\s*\S*vdelivermail/) {
         if ($address !~ /\@/) {
             carp "vpopmail support not available if no domain given";
-            return 0xfe;
+            return QD_VPOPMAIL_NO_DOMAIN;
         }
         my $origlocal = (split /\@/, $address)[0];
 
@@ -275,30 +282,31 @@ sub deliverable {
         $address = $origlocal . '@' . $user;
 
         if ($dot_qmail[0] =~ /bounce-no-mailbox/) {
-            return 0xf2 if -d "$homedir/$origlocal";
-            return 0xf3 if valias $address;
-            return 0xf5 if vuser $address;
-            if ( $VPOPMAIL_EXT ) {
+            return QD_VPOPMAIL_DIR    if -d "$homedir/$origlocal";
+            return QD_VPOPMAIL_VALIAS if valias $address;
+            return QD_VPOPMAIL_VUSER  if vuser $address;
+            if ($VPOPMAIL_EXT) {
                 my ($local, $domain) = split /@/, $address;
-                my @chunks = split /\-/, $local; # vpopmails qmail-ext option
-                for ( 0 .. $#chunks ) {
-                    return 0xf6 if vuser $chunks[$_] .'@'.$domain;
-                };
-            };
-            return 0x00;
+                my @chunks = split /\-/, $local;  # vpopmail qmail-ext option
+                for (0 .. $#chunks) {
+                    return QD_VPOPMAIL_QMAIL_EXT
+                        if vuser $chunks[$_] . '@' . $domain;
+                }
+            }
+            return QD_NOT_DELIVERABLE;
         }
-        return 0xf4;
+        return QD_VPOPMAIL_CATCHALL;
     }
     if ($dot_qmail[0] =~ /^\|bouncesaying\s+(.*)/) {
         my @args = $1 =~ /$shell_token/g;
-        return 0x13 if @args > 1;
-        return 0x00;
+        return QD_UNKNOWN_BOUNCESAYING if @args > 1;
+        return QD_NOT_DELIVERABLE;
     }
 
-    return 0x14 if grep /ezmlm/, @dot_qmail;
-    return 0x12 if grep /^\|/, @dot_qmail;
+    return QD_EZMLM        if grep /ezmlm/, @dot_qmail;
+    return QD_UNKNOWN_PIPE if grep /^\|/, @dot_qmail;
 
-    return 0xf1;
+    return QD_DELIVERABLE;
 }
 
 reread_config;
@@ -350,7 +358,8 @@ user, and the client is used by the unprivileged smtpd.
 =head2 Functions
 
 All documented functions are exportable, and a tag :all is available for
-convenience.
+convenience. Status-code constants (see L</Status codes>) are exported via
+the C<:status> tag, and are also included in C<:all>.
 
 Note that addresses and local user names must be in user@domain form, just like
 qmail internally uses. Comments, angle brackets, etcetera, must be stripped
@@ -401,27 +410,28 @@ if deliverability could not be determined.
 The system default delivery method, and mailbox, maildir, and forward
 instructions in dot-qmail files, are assumed to always succeed.
 
-Possible return values are:
+Possible return values (with the constant name from
+L<Qmail::Deliverable::Status>):
 
-    0x00   Not deliverable
+    0x00   QD_NOT_DELIVERABLE          Not deliverable
 
-    0x11   Deliverability unknown: permission denied for any file
-    0x12   Deliverability unknown: qmail-command called in dot-qmail file
-    0x13   Deliverability unknown: bouncesaying with program
-    0x14   Deliverable, probable:  ezmlm mailing list
+    0x11   QD_UNKNOWN_PERM_DENIED      Deliverability unknown: permission denied
+    0x12   QD_UNKNOWN_PIPE             Deliverability unknown: qmail-command
+    0x13   QD_UNKNOWN_BOUNCESAYING     Deliverability unknown: bouncesaying with program
+    0x14   QD_EZMLM                    Deliverable, probable: ezmlm mailing list
 
-    0x21   Temporarily undeliverable: group/world writable
-    0x22   Temporarily undeliverable: homedir is sticky
+    0x21   QD_TEMPFAIL_GROUP_WRITABLE  Temporarily undeliverable: group/world writable
+    0x22   QD_TEMPFAIL_STICKY          Temporarily undeliverable: homedir is sticky
 
-    0xf1   Deliverable, almost certainly
-    0xf2   Deliverable, vdelivermail: directory exists
-    0xf3   Deliverable, vdelivermail: valias exists
-    0xf4   Deliverable, vdelivermail: catch-all defined
-    0xf5   Deliverable, vdelivermail: vuser exists
-    0xf6   Deliverable, vdelivermail: qmail-ext
+    0xf1   QD_DELIVERABLE              Deliverable, almost certainly
+    0xf2   QD_VPOPMAIL_DIR             vdelivermail: directory exists
+    0xf3   QD_VPOPMAIL_VALIAS          vdelivermail: valias exists
+    0xf4   QD_VPOPMAIL_CATCHALL        vdelivermail: catch-all defined
+    0xf5   QD_VPOPMAIL_VUSER           vdelivermail: vuser exists
+    0xf6   QD_VPOPMAIL_QMAIL_EXT       vdelivermail: qmail-ext
 
-    0xfe   vpopmail (vdelivermail) detected but no domain was given
-    0xff   Domain is not local
+    0xfe   QD_VPOPMAIL_NO_DOMAIN       vpopmail detected but no domain was given
+    0xff   QD_NOT_LOCAL                Domain is not local
 
 (These values are, currently, not bitmasks. Do not treat them as such.)
 
@@ -446,6 +456,22 @@ Re-reads the config files /var/qmail/control/locals,
 /var/qmail/control/virtualdomains, and /var/qmail/users/assign.
 
 =back
+
+=head2 Status codes
+
+The numeric values returned by C<deliverable> have symbolic constants
+defined in L<Qmail::Deliverable::Status> and re-exported by this module
+under the C<:status> tag:
+
+    use Qmail::Deliverable qw(deliverable :status);
+
+    my $rv = deliverable $address;
+    return DECLINED if $rv == QD_DELIVERABLE;
+    return DENY     if $rv == QD_NOT_DELIVERABLE;
+
+See L<Qmail::Deliverable::Status> for the full list. Numeric values are
+unchanged from earlier releases, so the constants are a drop-in
+readability improvement.
 
 =head1 CAVEATS
 

@@ -40,14 +40,10 @@ subtest '0x21 - group-writable homedir' => sub {
        'homedir mode 0775 yields 0x21';
 };
 
-subtest '0x22 vs 0xf1 - "sticky" path is unreachable on a directory' => sub {
-    # The implementation uses `-T _` (text-file test) where the comment says
-    # "sticky". `-T` on a directory returns undef on every platform we know
-    # of, so 0x22 is never reached and we fall through to 0xf1 via
-    # defaultdelivery (no bare .qmail).
+subtest '0x22 - sticky homedir' => sub {
     is sprintf('0x%02x', deliverable('sticky@sub.example.com')),
-       '0xf1',
-       'mode 1755 homedir does NOT yield 0x22; falls through';
+       '0x22',
+       'mode 1755 homedir yields 0x22 (sticky bit detected)';
 };
 
 SKIP: {

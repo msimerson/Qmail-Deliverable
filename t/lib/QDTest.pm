@@ -86,6 +86,7 @@ sub setup_perm_dirs {
 sub start_daemon {
     my (%opts) = @_;
     my $qmail_dir = $opts{qmail_dir} or die "qmail_dir required";
+    my $pidfile   = $opts{pidfile};   # optional
     my $root      = repo_root();
 
     for my $attempt (1 .. 5) {
@@ -95,6 +96,7 @@ sub start_daemon {
 
         if ($pid == 0) {
             @ARGV = ('--foreground', '--listen', "127.0.0.1:$port");
+            push @ARGV, '--pidfile', $pidfile if $pidfile;
             $Qmail::Deliverable::qmail_dir = $qmail_dir;
             Qmail::Deliverable::reread_config();
             do "$root/bin/qmail-deliverabled";

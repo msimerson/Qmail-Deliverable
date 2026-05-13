@@ -6,9 +6,16 @@ use Carp qw(carp);
 use base 'Exporter';
 use LWP::Simple qw($ua);
 use URI::Escape qw(uri_escape);
+use Qmail::Deliverable::Status qw(:status);
 
-our @EXPORT_OK = qw/qmail_local deliverable/;
-our %EXPORT_TAGS = (all => \@EXPORT_OK);
+our @EXPORT_OK = (
+    qw(qmail_local deliverable),
+    @Qmail::Deliverable::Status::STATUS,
+);
+our %EXPORT_TAGS = (
+    all    => \@EXPORT_OK,
+    status => \@Qmail::Deliverable::Status::STATUS,
+);
 
 our $SERVER = "127.0.0.1:8998";
 our $ERROR;
@@ -64,9 +71,9 @@ sub deliverable {
         or do { carp "Invalid address: $in"; return; };
 
     my $rv = _remote 'deliverable', $address;
-    return 0x2f if not defined $rv;  # shouldn't happen
-    return 0x2f if not length $rv;   # shouldn't happen
-    return 0x2f if $rv eq "\0";
+    return QD_CLIENT_FAILURE if not defined $rv;  # shouldn't happen
+    return QD_CLIENT_FAILURE if not length $rv;   # shouldn't happen
+    return QD_CLIENT_FAILURE if $rv eq "\0";
 
     return $rv;
 }
@@ -135,10 +142,21 @@ failure.
 
 =item deliverable $local
 
-As Qmail::Deliverable::deliverable. Warns and returns 0x2f on communication
-failure.
+As Qmail::Deliverable::deliverable. Warns and returns
+C<QD_CLIENT_FAILURE> (0x2f) on communication failure.
 
 =back
+
+=head2 Status codes
+
+Status-code constants are re-exported under the C<:status> tag from
+L<Qmail::Deliverable::Status>. Loading them does not pull in any of
+C<Qmail::Deliverable>'s privileged code:
+
+    use Qmail::Deliverable::Client qw(deliverable :status);
+
+    my $rv = deliverable $address;
+    warn "daemon down" if $rv == QD_CLIENT_FAILURE;
 
 =head1 PERFORMANCE
 

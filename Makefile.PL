@@ -9,12 +9,16 @@ my @authors = (
     'Martin Sluka',
 );
 
+my %dist = ();
+if ( $^O eq 'darwin' ) {
+    $dist{TAR} = 'COPY_EXTENDED_ATTRIBUTES_DISABLE=1 COPYFILE_DISABLE=1 tar';
+}
+
 WriteMakefile(
     NAME              => 'Qmail::Deliverable',
     VERSION_FROM      => 'lib/Qmail/Deliverable.pm', # finds $VERSION
     ABSTRACT_FROM     => 'lib/Qmail/Deliverable.pm', # retrieve abstract from module
     AUTHOR            => 'Matt Simerson <msimerson@cpan.org>',
-    LICENSE           => 'perl_5',
     MIN_PERL_VERSION  => '5.006',
     EXE_FILES         => [ 'bin/qmail-deliverabled', 'qpsmtpd-plugin/qmail_deliverable' ],
     PREREQ_PM         => {},
@@ -44,4 +48,5 @@ WriteMakefile(
         },
         x_contributors => [ 'Martin Sluka' ],
     },
+    dist => \%dist,
 );
