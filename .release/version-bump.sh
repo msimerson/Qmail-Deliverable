@@ -10,9 +10,15 @@ if [ -z "$2" ]; then
 	exit 2
 fi
 
-alias gfind='find . -type d -name .git -prune -o -type d -name .build -prune -o -type d -name .github -prune -o -type f -print'
+# Escape dots so the version strings are safe to embed in regex patterns.
+escaped1=$(printf '%s' "$1" | sed 's/\./\\./g')
+escaped2=$(printf '%s' "$2" | sed 's/\./\\./g')
 
-grep $VERSION `gfind` | cut -f1 -d':' | sort -u > versions.txt
-perl -pi -e "s/\b$1\b/$2/g if /version|VERSION|v$1/" `cat versions.txt`
+gfind() {
+	find . -type d \( -name .git -o -name .build -o -name .github \) -prune \
+	     -o -type f -print
+}
+
+grep -Fl "$VERSION" $(gfind) | sort -u > versions.txt
+perl -pi -e "s/\b$escaped1\b/$2/g if /version|VERSION|v$escaped1/" $(cat versions.txt)
 rm versions.txt
-

@@ -76,6 +76,10 @@ sub _remote {
     }
 
     my ($code, $body, $sl) = _http_request($server, $command, $arg);
+    if (not defined $code) {
+        carp $ERROR = "Server $server unreachable or broken! ($sl)";
+        return "\0";
+    }
     return undef if $code == 204;  # rpc undef
     if ($code == 200) {
         return $body;
