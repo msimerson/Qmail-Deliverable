@@ -45,3 +45,10 @@ WriteMakefile(
     },
     dist => \%dist,
 );
+
+package MY;
+sub realclean {
+    my ($self, %attribs) = @_;
+    push @{ $attribs{FILES} ||= [] }, 'cover_db';
+    return $self->SUPER::realclean(%attribs);
+}
