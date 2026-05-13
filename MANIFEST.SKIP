@@ -1,4 +1,4 @@
-.claude
-.git
+^\.claude
+^\.git
 ^Qmail-Deliverable-\d+\.\d+\.tar(?:\.gz)?$
-cover_db
+^cover_db

@@ -3,7 +3,6 @@ use warnings;
 use Test::More;
 use File::Temp qw(tempdir);
 use POSIX ":sys_wait_h";
-use IO::Socket::INET;
 
 use lib 'lib';
 use lib 't/lib';
