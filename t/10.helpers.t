@@ -1,7 +1,6 @@
 use strict;
 use warnings;
 use Test::More;
-use Test::Warn;
 use File::Temp qw(tempdir);
 use File::Path qw(make_path);
 
@@ -9,8 +8,19 @@ use lib 'lib';
 use lib 't/lib';
 
 use Qmail::Deliverable ':all';
+use QDTest qw(setup_abs_fixtures);
 $Qmail::Deliverable::qmail_dir = 't/fixtures';
 Qmail::Deliverable::reread_config();
+
+sub warning_like (&$$) {
+    my ($code, $re, $name) = @_;
+    my @warnings;
+    {
+        local $SIG{__WARN__} = sub { push @warnings, @_ };
+        $code->();
+    }
+    like join("", @warnings), $re, $name;
+}
 
 subtest '_potential_exts' => sub {
     is_deeply [ Qmail::Deliverable::_potential_exts('') ],
@@ -102,6 +112,27 @@ subtest 'trailing-dot tolerance' => sub {
     is Qmail::Deliverable::qmail_local('alice@sub.example.com.'),
        'alice',
        'trailing dot on address is allowed';
+};
+
+subtest 'setup_abs_fixtures preserves modes under permissive umask' => sub {
+    my $src_mode = (stat 't/fixtures/domains/realhome')[2] & 07777;
+    my $old_umask = umask 0002;
+    my $fixtures = setup_abs_fixtures();
+    umask $old_umask;
+
+    my $dst_mode = (stat "$fixtures/domains/realhome")[2] & 07777;
+    is sprintf('%04o', $dst_mode), sprintf('%04o', $src_mode),
+       'copied homedir keeps the source mode';
+
+    {
+        local $Qmail::Deliverable::qmail_dir = $fixtures;
+        Qmail::Deliverable::reread_config();
+        is deliverable('alice@sub.example.com'), 0xf1,
+           'deliverable status is unchanged after copying fixtures';
+    }
+
+    $Qmail::Deliverable::qmail_dir = 't/fixtures';
+    Qmail::Deliverable::reread_config();
 };
 
 done_testing();

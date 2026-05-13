@@ -1,16 +1,38 @@
 #!/usr/bin/perl -Tw
 use strict;
 
-use HTTP::Daemon;
-use HTTP::Status;
+use IO::Socket::INET;
 use POSIX ();
-use URI::Escape qw(uri_unescape);
 use Qmail::Deliverable ':all';
 use Getopt::Long;
 Getopt::Long::Configure("bundling");
 
 my ($pidfile, $verbose, $stop, $foreground);
 my $listen = "127.0.0.1:8998";
+
+sub _uri_unescape {
+    my ($value) = @_;
+    $value =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/eg;
+    return $value;
+}
+
+sub _send_response {
+    my ($sock, $code, $message, $body) = @_;
+    $body = '' if not defined $body;
+    my $response = join "",
+        "HTTP/1.0 $code $message\r\n",
+        "Content-Length: " . length($body) . "\r\n",
+        "Content-Type: text/plain\r\n",
+        "Connection: close\r\n",
+        "\r\n",
+        $body;
+    print {$sock} $response;
+}
+
+sub _send_error {
+    my ($sock, $code, $message) = @_;
+    _send_response($sock, $code, $message, "$code $message\n");
+}
 
 GetOptions(
     "help|h"       => sub { die "Use 'man qmail-deliverabled' for full documentation.\n" },
@@ -47,8 +69,13 @@ if ($stop or $listen eq 'stop') {
 
 # Bind the listener before daemonizing so any "address already in use"
 # error surfaces in the foreground where the operator can see it.
-my $d = HTTP::Daemon->new(
-    LocalAddr => $listen,
+my ($listen_host, $listen_port) = $listen =~ /^([0-9.]+):([0-9]+)\z/
+    or die "Listen argument must be ip:port!\n";
+my $d = IO::Socket::INET->new(
+    LocalAddr => $listen_host,
+    LocalPort => $listen_port,
+    Proto     => 'tcp',
+    Listen    => 5,
     ReuseAddr => 1,
 ) or die "Could not start daemon ($!)\n";
 
@@ -92,51 +119,76 @@ for (;;) {
     $verbose && printf "Listening on %s.\n", $listen;
     while (my $c = $d->accept) {
         $verbose && printf "Accepted request from %vd.\n", $c->peeraddr;
-        while (my $r = $c->get_request) {
-            if ($r->method ne 'GET' or $r->uri->path !~ m[^/qd1/]) {
-                $verbose && printf "Not a qd request: %s %s\n",
-                                   $r->method, $r->uri->path;
-                $c->send_error(RC_FORBIDDEN);
-                next;
-            }
-            my (undef, undef, $command) = split m[/], $r->uri->path;
+        my $request_line = <$c>;
+        if (not defined $request_line) {
+            $c->close;
+            undef($c);
+            next;
+        }
 
-            my $arg = uri_unescape($r->uri->query) || "\0";
+        while (my $line = <$c>) {
+            last if $line =~ /^\r?\n\z/;
+        }
 
-            ($arg) = $arg =~ /^([\x20-\x7e]*)\z/ or do {
-                $verbose && print "Invalid data received.\n";
-                $c->send_error(RC_BAD_REQUEST);
-                next;
-            };
+        my ($method, $target) = $request_line =~
+            /^([A-Z]+) ([\x21-\x7e]+) HTTP\/1\.[01]\r?\n\z/;
+        if (not defined $method or $method ne 'GET' or $target !~ m[^/qd1/]) {
+            $verbose && print "Not a qd request.\n";
+            _send_error($c, 403, "Forbidden");
+            $c->close;
+            undef($c);
+            next;
+        }
 
-            my $rv;
-            if ($command eq 'qmail_local') {
-                $verbose && printf "qmail_local('%s') => ", $arg;
-                $rv = eval { qmail_local($arg) };
-                $verbose && printf "%s\n", $rv;
-            } elsif ($command eq 'deliverable') {
-                $verbose && printf "deliverable('%s') => ", $arg;
-                $rv = eval { deliverable($arg) };
-                $verbose && printf "0x%02x\n", $rv;
-                $counter{yes}++ if   $rv;
-                $counter{no}++  if ! $rv;
-                my $total = $counter{yes} + $counter{no};
-                $0 = sprintf "$base0 yes=%d(%.1f%%), no=%d(%.1f%%), total=%d",
-                    $counter{yes}, $counter{yes}/$total*100,
-                    $counter{no},  $counter{no} /$total*100,
-                    $total;
-            } else {
-                $verbose && printf "Unknown command: %s\n", $command;
-                $c->send_error(RC_FORBIDDEN);
-                next;
-            }
-            if (defined $rv) {
-                $c->send_response(
-                    HTTP::Response->new(200, "OK", undef, $rv));
-            } else {
-                $c->send_response(
-                    HTTP::Response->new(204, "UNDEF", undef, "undef"));
-            }
+        my ($command, $raw_query) = $target =~
+            m{\A/qd1/([A-Za-z_]+)(?:\?(.*))?\z};
+        if (not defined $command) {
+            $verbose && print "Not a qd request.\n";
+            _send_error($c, 403, "Forbidden");
+            $c->close;
+            undef($c);
+            next;
+        }
+
+        my $arg = defined $raw_query && length $raw_query
+            ? _uri_unescape($raw_query)
+            : "\0";
+
+        ($arg) = $arg =~ /^([\x20-\x7e]*)\z/ or do {
+            $verbose && print "Invalid data received.\n";
+            _send_error($c, 400, "Bad Request");
+            $c->close;
+            undef($c);
+            next;
+        };
+
+        my $rv;
+        if ($command eq 'qmail_local') {
+            $verbose && printf "qmail_local('%s') => ", $arg;
+            $rv = eval { qmail_local($arg) };
+            $verbose && printf "%s\n", $rv;
+        } elsif ($command eq 'deliverable') {
+            $verbose && printf "deliverable('%s') => ", $arg;
+            $rv = eval { deliverable($arg) };
+            $verbose && printf "0x%02x\n", $rv;
+            $counter{yes}++ if   $rv;
+            $counter{no}++  if ! $rv;
+            my $total = $counter{yes} + $counter{no};
+            $0 = sprintf "$base0 yes=%d(%.1f%%), no=%d(%.1f%%), total=%d",
+                $counter{yes}, $counter{yes}/$total*100,
+                $counter{no},  $counter{no} /$total*100,
+                $total;
+        } else {
+            $verbose && printf "Unknown command: %s\n", $command;
+            _send_error($c, 403, "Forbidden");
+            $c->close;
+            undef($c);
+            next;
+        }
+        if (defined $rv) {
+            _send_response($c, 200, "OK", $rv);
+        } else {
+            _send_response($c, 204, "UNDEF", '');
         }
         $c->close;
         undef($c);
@@ -186,8 +238,6 @@ qmail-deliverabled - Deliverability check daemon
 
 Exposes the Qmail::Deliverable functions C<qmail_local> and C<deliverable>
 over HTTP. Typically requires root access for file permissions.
-
-Requires the HTTP::Daemon module, available from CPAN.
 
 Use only with a ::Client of the same version. Returns 403 FORBIDDEN on error,
 any error.

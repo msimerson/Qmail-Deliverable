@@ -1,8 +1,7 @@
 use strict;
 use warnings;
 use Test::More;
-use LWP::UserAgent;
-use URI::Escape qw(uri_escape);
+use IO::Socket::INET;
 
 use lib 'lib';
 use lib 't/lib';
@@ -13,10 +12,48 @@ use QDTest qw(setup_abs_fixtures start_daemon stop_daemon);
 my $fixtures = setup_abs_fixtures();
 my ($pid, $port) = start_daemon(qmail_dir => $fixtures);
 
-my $ua = LWP::UserAgent->new(timeout => 5);
 my $base = "http://127.0.0.1:$port";
 
-sub GET { $ua->get("$base/$_[0]") }
+sub uri_escape {
+    my ($value) = @_;
+    $value =~ s/([^A-Za-z0-9\-\._~])/sprintf("%%%02X", ord($1))/eg;
+    return $value;
+}
+
+sub request {
+    my ($method, $path, $content) = @_;
+    my $sock = IO::Socket::INET->new(
+        PeerAddr => '127.0.0.1',
+        PeerPort => $port,
+        Proto    => 'tcp',
+        Timeout  => 5,
+    ) or die "connect: $!";
+
+    my $request = join "",
+        "$method /$path HTTP/1.0\r\n",
+        "Host: 127.0.0.1:$port\r\n",
+        "Connection: close\r\n",
+        (defined $content ? "Content-Length: " . length($content) . "\r\n" : ""),
+        "\r\n",
+        (defined $content ? $content : "");
+    print {$sock} $request or die "write: $!";
+
+    my $response = do { local $/; <$sock> };
+    close $sock;
+    my ($headers, $body) = split /\r?\n\r?\n/, $response, 2;
+    my ($status_line) = split /\r?\n/, $headers, 2;
+    my ($code) = $status_line =~ /^HTTP\/\d+\.\d+\s+([0-9]+)\b/
+        or die "bad response: $status_line";
+
+    return {
+        code        => $code,
+        content     => defined $body ? $body : '',
+        status_line => $status_line,
+    };
+}
+
+sub GET { request('GET', $_[0]) }
+sub POST { request('POST', $_[0], $_[1]) }
 
 END {
     stop_daemon($pid) if $pid;
@@ -24,59 +61,58 @@ END {
 
 subtest 'qmail_local: known local address' => sub {
     my $r = GET("qd1/qmail_local?" . uri_escape('alice@sub.example.com'));
-    is $r->code, 200, '200 OK';
-    is $r->content, 'alice', 'body is the local part';
+    is $r->{code}, 200, '200 OK';
+    is $r->{content}, 'alice', 'body is the local part';
 };
 
 subtest 'qmail_local: virtualdomain' => sub {
     my $r = GET("qd1/qmail_local?" . uri_escape('bob@example.com'));
-    is $r->code, 200, '200 OK';
-    is $r->content, 'example.com-bob', 'prepend applied';
+    is $r->{code}, 200, '200 OK';
+    is $r->{content}, 'example.com-bob', 'prepend applied';
 };
 
 subtest 'qmail_local: unknown domain -> 204 UNDEF' => sub {
     my $r = GET("qd1/qmail_local?" . uri_escape('user@nowhere.test'));
-    is $r->code, 204, '204 No Content for undef result';
+    is $r->{code}, 204, '204 No Content for undef result';
 };
 
 subtest 'deliverable: known address' => sub {
     my $r = GET("qd1/deliverable?" . uri_escape('alice@sub.example.com'));
-    is $r->code, 200, '200 OK';
-    is $r->content, sprintf('%d', 0xf1),
+    is $r->{code}, 200, '200 OK';
+    is $r->{content}, sprintf('%d', 0xf1),
        'body is the decimal status code (0xf1)';
 };
 
 subtest 'deliverable: non-local domain' => sub {
     my $r = GET("qd1/deliverable?" . uri_escape('user@nowhere.test'));
-    is $r->code, 200, '200 OK';
-    is $r->content, sprintf('%d', 0xff), '0xff';
+    is $r->{code}, 200, '200 OK';
+    is $r->{content}, sprintf('%d', 0xff), '0xff';
 };
 
 subtest 'unknown command under /qd1/ -> 403' => sub {
     my $r = GET("qd1/not_a_command?foo");
-    is $r->code, 403, 'forbidden';
+    is $r->{code}, 403, 'forbidden';
 };
 
 subtest 'path outside /qd1/ -> 403' => sub {
     my $r = GET("other/path");
-    is $r->code, 403, 'forbidden';
+    is $r->{code}, 403, 'forbidden';
 };
 
 subtest 'POST not allowed -> 403' => sub {
-    my $r = $ua->post("$base/qd1/qmail_local",
-        Content => 'alice@sub.example.com');
-    is $r->code, 403, 'POST forbidden';
+    my $r = POST("qd1/qmail_local", 'alice@sub.example.com');
+    is $r->{code}, 403, 'POST forbidden';
 };
 
 subtest 'non-ASCII query -> 400' => sub {
     my $r = GET("qd1/qmail_local?" . uri_escape("a\x00b"));
-    is $r->code, 400, '400 Bad Request for non-printable arg';
+    is $r->{code}, 400, '400 Bad Request for non-printable arg';
 };
 
 subtest 'SIGHUP rereads config' => sub {
     # Before: example.com is a virtualdomain with prepend 'example.com'.
     my $before = GET("qd1/qmail_local?" . uri_escape('x@example.com'));
-    is $before->content, 'example.com-x',
+    is $before->{content}, 'example.com-x',
        'initial qmail_local result reflects current config';
 
     # Rewrite virtualdomains so example.com is no longer listed.
@@ -90,10 +126,10 @@ subtest 'SIGHUP rereads config' => sub {
     my $after;
     for (1 .. 30) {
         my $r = GET("qd1/qmail_local?" . uri_escape('x@example.com'));
-        if ($r->code == 204) { $after = $r; last; }
+        if ($r->{code} == 204) { $after = $r; last; }
         select undef, undef, undef, 0.1;
     }
-    ok $after && $after->code == 204,
+    ok $after && $after->{code} == 204,
        'after SIGHUP, example.com is no longer local';
 };
 

@@ -2,6 +2,11 @@
 
 Revision history for the `Qmail::Deliverable` Perl extension.
 
+## 1.12
+
+- test fix, for CPAN smoker machines
+- shed dependencies, they pull in half of CPAN. :-(
+
 ## 1.11
 
 - new: `Qmail::Deliverable::Status` module exporting symbolic constants (`QD_DELIVERABLE`, ...) for the 16 status codes

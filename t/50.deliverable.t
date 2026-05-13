@@ -1,7 +1,6 @@
 use strict;
 use warnings;
 use Test::More;
-use Test::MockModule;
 use File::Path qw(make_path remove_tree);
 
 use lib 'lib';
@@ -13,12 +12,6 @@ use QDTest qw(setup_perm_dirs);
 $Qmail::Deliverable::qmail_dir = 't/fixtures';
 Qmail::Deliverable::reread_config();
 
-# Default mocks: external vpopmail binaries always say "no".
-# Individual subtests override these.
-my $mock = Test::MockModule->new('Qmail::Deliverable');
-$mock->mock(valias => sub { 0 });
-$mock->mock(vuser  => sub { 0 });
-
 # Set up the special-permission homedirs referenced from t/fixtures/users/assign.
 setup_perm_dirs('t/fixtures');
 END {
@@ -27,6 +20,11 @@ END {
     remove_tree("t/fixtures/domains/$_")
         for qw(perms775 permssticky noread);
 }
+
+{
+no warnings 'redefine';
+local *Qmail::Deliverable::valias = sub { 0 };
+local *Qmail::Deliverable::vuser  = sub { 0 };
 
 subtest '0xff - non-local domain' => sub {
     is sprintf('0x%02x', deliverable('user@nowhere.test')),
@@ -111,11 +109,10 @@ subtest '0xf2 - vdelivermail + local-part directory exists' => sub {
 };
 
 subtest '0xf3 - vdelivermail + valias matches' => sub {
-    $mock->mock(valias => sub { 1 });
+    local *Qmail::Deliverable::valias = sub { 1 };
     is sprintf('0x%02x', deliverable('luser-valiased@example.com')),
        '0xf3',
        'valias returns true';
-    $mock->mock(valias => sub { 0 });
 };
 
 subtest '0xf4 - catch-all vdelivermail (no bounce-no-mailbox)' => sub {
@@ -125,11 +122,10 @@ subtest '0xf4 - catch-all vdelivermail (no bounce-no-mailbox)' => sub {
 };
 
 subtest '0xf5 - vdelivermail + vuser matches' => sub {
-    $mock->mock(vuser => sub { 1 });
+    local *Qmail::Deliverable::vuser = sub { 1 };
     is sprintf('0x%02x', deliverable('luser-vusered@example.com')),
        '0xf5',
        'vuser returns true';
-    $mock->mock(vuser => sub { 0 });
 };
 
 subtest '0xf6 - vdelivermail + VPOPMAIL_EXT qmail-ext probe' => sub {
@@ -138,15 +134,14 @@ subtest '0xf6 - vdelivermail + VPOPMAIL_EXT qmail-ext probe' => sub {
     # +example.com- wildcard (12 chars) wins over +luser-, so the
     # assign-user field is 'example.com'. The chunk loop then probes
     # vuser('luser@example.com') and vuser('vextfoo@example.com').
-    $mock->mock(vuser => sub {
+    local *Qmail::Deliverable::vuser = sub {
         my ($addr) = @_;
         return $addr eq 'luser@example.com' ? 1 : 0;
-    });
+    };
     local $Qmail::Deliverable::VPOPMAIL_EXT = 1;
     is sprintf('0x%02x', deliverable('luser-vextfoo@example.com')),
        '0xf6',
        'qmail-ext chunk match';
-    $mock->mock(vuser => sub { 0 });
 };
 
 subtest '0xfe - vdelivermail in dot-qmail but no @ in address' => sub {
@@ -163,3 +158,4 @@ subtest '0xfe - vdelivermail in dot-qmail but no @ in address' => sub {
 };
 
 done_testing();
+}

@@ -40,13 +40,19 @@ sub pick_port {
 
 sub _copy_tree {
     my ($src, $dst) = @_;
+    my $src_mode = (stat $src)[2] & 07777;
     make_path($dst);
+    chmod $src_mode, $dst or die "chmod $dst: $!";
     opendir my $dh, $src or die "opendir $src: $!";
     while (my $entry = readdir $dh) {
         next if $entry eq '.' or $entry eq '..';
         my ($s, $d) = ("$src/$entry", "$dst/$entry");
         if (-d $s) { _copy_tree($s, $d); }
-        else       { File::Copy::copy($s, $d) or die "copy $s -> $d: $!"; }
+        else {
+            File::Copy::copy($s, $d) or die "copy $s -> $d: $!";
+            my $file_mode = (stat $s)[2] & 07777;
+            chmod $file_mode, $d or die "chmod $d: $!";
+        }
     }
     closedir $dh;
 }

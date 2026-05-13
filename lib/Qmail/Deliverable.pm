@@ -6,7 +6,7 @@ use Carp qw(carp);
 use base 'Exporter';
 use Qmail::Deliverable::Status qw(:status);
 
-our $VERSION = '1.11';
+our $VERSION = '1.12';
 our @EXPORT_OK = (
     qw(reread_config qmail_local dot_qmail deliverable qmail_user),
     @Qmail::Deliverable::Status::STATUS,

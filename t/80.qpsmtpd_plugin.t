@@ -1,7 +1,6 @@
 use strict;
 use warnings;
 use Test::More;
-use Test::MockModule;
 
 use lib 'lib';
 use lib 't/lib';
@@ -66,10 +65,7 @@ my $self = FakeSelf->new($log);
 register($self, undef, server => "127.0.0.1:9999");
 
 # The plugin's `use Qmail::Deliverable::Client qw(deliverable)` aliased
-# &main::deliverable at compile time. Mocking the original
-# Qmail::Deliverable::Client::deliverable after the fact doesn't update
-# the alias, so we mock main::deliverable directly.
-my $client_mock = Test::MockModule->new('main');
+# &main::deliverable at compile time, so localize that symbol directly.
 
 sub run_rcpt {
     my (%opts) = @_;
@@ -77,7 +73,8 @@ sub run_rcpt {
     my $txn  = FakeTxn->new(FakeAddr->new($sender_addr));
     my $rcpt = FakeRcpt->new('recipient@example.com', 'example.com');
     $log->clear;
-    $client_mock->mock(deliverable => sub { $opts{rv} });
+    no warnings 'redefine';
+    local *main::deliverable = sub { $opts{rv} };
     return rcpt_handler($self, $txn, $rcpt);
 }
 

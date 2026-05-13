@@ -1,7 +1,6 @@
 use strict;
 use warnings;
 use Test::More;
-use Test::Warn;
 
 use lib 'lib';
 use lib 't/lib';
@@ -18,6 +17,16 @@ END {
 }
 
 $Qmail::Deliverable::Client::SERVER = "127.0.0.1:$port";
+
+sub warning_like (&$$) {
+    my ($code, $re, $name) = @_;
+    my @warnings;
+    {
+        local $SIG{__WARN__} = sub { push @warnings, @_ };
+        $code->();
+    }
+    like join("", @warnings), $re, $name;
+}
 
 subtest 'qmail_local: routes to daemon and returns the local part' => sub {
     is Qmail::Deliverable::Client::qmail_local('alice@sub.example.com'),
