@@ -23,12 +23,7 @@ WriteMakefile(
     EXE_FILES         => [ 'bin/qmail-deliverabled', 'qpsmtpd-plugin/qmail_deliverable' ],
     PREREQ_PM         => {},
     TEST_REQUIRES     => {
-        'LWP::Simple'      => 0,
-        'LWP::UserAgent'   => 0,
         'Test::More'       => 0,
-        'Test::Warn'       => 0,
-        'Test::MockModule' => 0,
-        'HTTP::Daemon'     => 0,
     },
     META_ADD => {
         'meta-spec' => { version => 2 },
@@ -50,3 +45,22 @@ WriteMakefile(
     },
     dist => \%dist,
 );
+
+package MY;
+sub realclean {
+    my ($self, %attribs) = @_;
+    push @{ $attribs{FILES} ||= [] }, 'cover_db';
+    return $self->SUPER::realclean(%attribs);
+}
+
+sub postamble {
+    return <<'MAKE_FRAG';
+PERLTIDY_FILES = bin/qmail-deliverabled qpsmtpd-plugin/qmail_deliverable \
+    $(wildcard lib/Qmail/*.pm lib/Qmail/*/*.pm) \
+    $(wildcard t/*.t t/lib/*.pm t/lib/*/*.pm)
+
+tidy:
+	perltidy $(PERLTIDY_FILES)
+	$(RM_F) $(addsuffix .bak, $(PERLTIDY_FILES))
+MAKE_FRAG
+}

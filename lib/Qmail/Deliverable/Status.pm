@@ -4,7 +4,7 @@ use strict;
 use 5.006;
 use Exporter 'import';
 
-our $VERSION = '1.11';
+our $VERSION = '1.12';
 
 use constant {
     QD_NOT_DELIVERABLE         => 0x00,
@@ -44,7 +44,7 @@ our @STATUS = qw(
     QD_NOT_LOCAL
 );
 
-our @EXPORT_OK = @STATUS;
+our @EXPORT_OK   = @STATUS;
 our %EXPORT_TAGS = (
     all    => \@STATUS,
     status => \@STATUS,
