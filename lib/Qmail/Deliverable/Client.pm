@@ -7,10 +7,7 @@ use base 'Exporter';
 use IO::Socket::INET;
 use Qmail::Deliverable::Status qw(:status);
 
-our @EXPORT_OK = (
-    qw(qmail_local deliverable),
-    @Qmail::Deliverable::Status::STATUS,
-);
+our @EXPORT_OK   = ( qw(qmail_local deliverable), @Qmail::Deliverable::Status::STATUS, );
 our %EXPORT_TAGS = (
     all    => \@EXPORT_OK,
     status => \@Qmail::Deliverable::Status::STATUS,
@@ -30,16 +27,16 @@ sub _uri_escape {
 }
 
 sub _http_request {
-    my ($server, $command, $arg) = @_;
-    my ($host, $port) = $server =~ /^([A-Za-z0-9_.-]+):([0-9]+)\z/
-        or return (undef, undef, "invalid server address");
+    my ( $server, $command, $arg ) = @_;
+    my ( $host, $port ) = $server =~ /^([A-Za-z0-9_.-]+):([0-9]+)\z/
+        or return ( undef, undef, "invalid server address" );
 
     my $sock = IO::Socket::INET->new(
         PeerAddr => $host,
         PeerPort => $port,
         Proto    => 'tcp',
         Timeout  => 5,
-    ) or return (undef, undef, $!);
+    ) or return ( undef, undef, $! );
 
     my $request = join "",
         "GET /qd1/$command?" . _uri_escape($arg) . " HTTP/1.0\r\n",
@@ -47,41 +44,42 @@ sub _http_request {
         "Connection: close\r\n",
         "\r\n";
 
-    print {$sock} $request or return (undef, undef, $!);
+    print {$sock} $request or return ( undef, undef, $! );
 
     my $response = do { local $/; <$sock> };
     close $sock;
-    return (undef, undef, "empty response") if not defined $response;
+    return ( undef, undef, "empty response" ) if not defined $response;
 
-    my ($headers, $body) = split /\r?\n\r?\n/, $response, 2;
-    return (undef, undef, "malformed response") if not defined $body;
+    my ( $headers, $body ) = split /\r?\n\r?\n/, $response, 2;
+    return ( undef, undef, "malformed response" ) if not defined $body;
 
     my ($status_line) = split /\r?\n/, $headers, 2;
-    my ($code) = $status_line =~ /^HTTP\/\d+\.\d+\s+([0-9]+)\b/
-        or return (undef, undef, "malformed response");
+    my ($code)        = $status_line =~ /^HTTP\/\d+\.\d+\s+([0-9]+)\b/
+        or return ( undef, undef, "malformed response" );
 
-    return ($code, $body, $status_line);
+    return ( $code, $body, $status_line );
 }
 
 sub _remote {
-    my ($command, $arg) = @_;
+    my ( $command, $arg ) = @_;
 
-    my $server = ref($SERVER) eq 'CODE'
+    my $server =
+        ref($SERVER) eq 'CODE'
         ? $SERVER->()
         : $SERVER;
 
-    if (not defined $server) {
+    if ( not defined $server ) {
         $ERROR = "No SERVER defined; connection not attempted";
         return "\0";
     }
 
-    my ($code, $body, $sl) = _http_request($server, $command, $arg);
-    if (not defined $code) {
+    my ( $code, $body, $sl ) = _http_request( $server, $command, $arg );
+    if ( not defined $code ) {
         carp $ERROR = "Server $server unreachable or broken! ($sl)";
         return "\0";
     }
-    return undef if $code == 204;  # rpc undef
-    if ($code == 200) {
+    return undef if $code == 204;    # rpc undef
+    if ( $code == 200 ) {
         return $body;
     }
 
@@ -90,9 +88,9 @@ sub _remote {
 }
 
 sub qmail_local {
-    my ($in) = @_;
-    my ($address) = lc($in) =~ /$valid/ or
-        do { carp "Invalid address: $in"; return; };
+    my ($in)      = @_;
+    my ($address) = lc($in) =~ /$valid/
+        or do { carp "Invalid address: $in"; return; };
 
     # This we can do locally. Let's not waste HTTP requests :)
     return $address if $address !~ /\@/;
@@ -103,13 +101,13 @@ sub qmail_local {
 }
 
 sub deliverable {
-    my ($in) = @_;
+    my ($in)      = @_;
     my ($address) = lc($in) =~ /$valid/
         or do { carp "Invalid address: $in"; return; };
 
     my $rv = _remote 'deliverable', $address;
-    return QD_CLIENT_FAILURE if not defined $rv;  # shouldn't happen
-    return QD_CLIENT_FAILURE if not length $rv;   # shouldn't happen
+    return QD_CLIENT_FAILURE if not defined $rv;    # shouldn't happen
+    return QD_CLIENT_FAILURE if not length $rv;     # shouldn't happen
     return QD_CLIENT_FAILURE if $rv eq "\0";
 
     return $rv;

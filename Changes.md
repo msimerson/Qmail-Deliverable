@@ -4,8 +4,9 @@ Revision history for the `Qmail::Deliverable` Perl extension.
 
 ## 1.12
 
-- test fix, for CPAN smoker machines
-- shed dependencies, they pull in half of CPAN. :-(
+- fix: tests on CPAN smoker machines failed due to umask
+- change: shed dependencies, they pull in half of CPAN. :-(
+- change: perltidy
 
 ## 1.11
 

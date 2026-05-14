@@ -44,7 +44,7 @@ our @STATUS = qw(
     QD_NOT_LOCAL
 );
 
-our @EXPORT_OK = @STATUS;
+our @EXPORT_OK   = @STATUS;
 our %EXPORT_TAGS = (
     all    => \@STATUS,
     status => \@STATUS,

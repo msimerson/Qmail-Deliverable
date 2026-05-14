@@ -39,18 +39,18 @@ sub pick_port {
 }
 
 sub _copy_tree {
-    my ($src, $dst) = @_;
-    my $src_mode = (stat $src)[2] & 07777;
+    my ( $src, $dst ) = @_;
+    my $src_mode = ( stat $src )[2] & 07777;
     make_path($dst);
     chmod $src_mode, $dst or die "chmod $dst: $!";
     opendir my $dh, $src or die "opendir $src: $!";
-    while (my $entry = readdir $dh) {
+    while ( my $entry = readdir $dh ) {
         next if $entry eq '.' or $entry eq '..';
-        my ($s, $d) = ("$src/$entry", "$dst/$entry");
-        if (-d $s) { _copy_tree($s, $d); }
+        my ( $s, $d ) = ( "$src/$entry", "$dst/$entry" );
+        if ( -d $s ) { _copy_tree( $s, $d ); }
         else {
-            File::Copy::copy($s, $d) or die "copy $s -> $d: $!";
-            my $file_mode = (stat $s)[2] & 07777;
+            File::Copy::copy( $s, $d ) or die "copy $s -> $d: $!";
+            my $file_mode = ( stat $s )[2] & 07777;
             chmod $file_mode, $d or die "chmod $d: $!";
         }
     }
@@ -61,8 +61,8 @@ sub _copy_tree {
 # Returns the absolute path to the new fixtures root.
 sub setup_abs_fixtures {
     my $root = repo_root();
-    my $tmp  = tempdir(CLEANUP => 1);
-    _copy_tree("$root/t/fixtures", "$tmp/fixtures");
+    my $tmp  = tempdir( CLEANUP => 1 );
+    _copy_tree( "$root/t/fixtures", "$tmp/fixtures" );
 
     my $assign = "$tmp/fixtures/users/assign";
     open my $in, '<', $assign or die "open $assign: $!";
@@ -72,7 +72,7 @@ sub setup_abs_fixtures {
         s{t/fixtures/domains/}{$tmp/fixtures/domains/}g;
     }
     open my $out, '>', $assign or die "open > $assign: $!";
-    print { $out } @lines;
+    print {$out} @lines;
     close $out;
 
     return "$tmp/fixtures";
@@ -90,18 +90,18 @@ sub setup_perm_dirs {
 # Fork a qmail-deliverabled child against the given absolute fixtures dir.
 # Retries on port conflict. Returns (pid, port).
 sub start_daemon {
-    my (%opts) = @_;
+    my (%opts)    = @_;
     my $qmail_dir = $opts{qmail_dir} or die "qmail_dir required";
-    my $pidfile   = $opts{pidfile};   # optional
+    my $pidfile   = $opts{pidfile};                                 # optional
     my $root      = repo_root();
 
-    for my $attempt (1 .. 5) {
+    for my $attempt ( 1 .. 5 ) {
         my $port = pick_port();
         my $pid  = fork;
         die "fork: $!" if not defined $pid;
 
-        if ($pid == 0) {
-            @ARGV = ('--foreground', '--listen', "127.0.0.1:$port");
+        if ( $pid == 0 ) {
+            @ARGV = ( '--foreground', '--listen', "127.0.0.1:$port" );
             push @ARGV, '--pidfile', $pidfile if $pidfile;
             $Qmail::Deliverable::qmail_dir = $qmail_dir;
             Qmail::Deliverable::reread_config();
@@ -111,14 +111,14 @@ sub start_daemon {
             exit 1;
         }
 
-        for (1 .. 50) {
+        for ( 1 .. 50 ) {
             my $waited = waitpid $pid, WNOHANG;
-            last if $waited == $pid;     # child died early
+            last if $waited == $pid;    # child died early
             my $s = IO::Socket::INET->new(
                 PeerAddr => "127.0.0.1:$port",
                 Timeout  => 1,
             );
-            if ($s) { $s->close; return ($pid, $port); }
+            if ($s) { $s->close; return ( $pid, $port ); }
             select undef, undef, undef, 0.1;
         }
 
@@ -131,10 +131,10 @@ sub start_daemon {
 sub stop_daemon {
     my ($pid) = @_;
     return unless $pid;
-    local $?;   # don't leak the child's signal status to our own exit
+    local $?;    # don't leak the child's signal status to our own exit
     kill 15, $pid;
     my $deadline = time + 5;
-    while (time < $deadline) {
+    while ( time < $deadline ) {
         my $r = waitpid $pid, WNOHANG;
         return if $r == $pid;
         select undef, undef, undef, 0.05;

@@ -7,7 +7,7 @@ use Qmail::Deliverable ':all';
 use Getopt::Long;
 Getopt::Long::Configure("bundling");
 
-my ($pidfile, $verbose, $stop, $foreground);
+my ( $pidfile, $verbose, $stop, $foreground );
 my $listen = "127.0.0.1:8998";
 
 sub _uri_unescape {
@@ -17,7 +17,7 @@ sub _uri_unescape {
 }
 
 sub _send_response {
-    my ($sock, $code, $message, $body) = @_;
+    my ( $sock, $code, $message, $body ) = @_;
     $body = '' if not defined $body;
     my $response = join "",
         "HTTP/1.0 $code $message\r\n",
@@ -30,8 +30,8 @@ sub _send_response {
 }
 
 sub _send_error {
-    my ($sock, $code, $message) = @_;
-    _send_response($sock, $code, $message, "$code $message\n");
+    my ( $sock, $code, $message ) = @_;
+    _send_response( $sock, $code, $message, "$code $message\n" );
 }
 
 GetOptions(
@@ -53,7 +53,7 @@ if ($pidfile) {
 
 chdir '/';
 
-if ($stop or $listen eq 'stop') {
+if ( $stop or $listen eq 'stop' ) {
     die "Cannot --stop without --pidfile.\n" if not $pidfile;
     open my $fh, '<', $pidfile or die "Could not open pidfile $pidfile: $!\n";
     my $pid = readline $fh;
@@ -69,7 +69,7 @@ if ($stop or $listen eq 'stop') {
 
 # Bind the listener before daemonizing so any "address already in use"
 # error surfaces in the foreground where the operator can see it.
-my ($listen_host, $listen_port) = $listen =~ /^([0-9.]+):([0-9]+)\z/
+my ( $listen_host, $listen_port ) = $listen =~ /^([0-9.]+):([0-9]+)\z/
     or die "Listen argument must be ip:port!\n";
 my $d = IO::Socket::INET->new(
     LocalAddr => $listen_host,
@@ -84,6 +84,7 @@ daemonize() unless $foreground;
 # pidfile is written AFTER daemonization so it records the final PID.
 # Only the surviving (grand)child reaches this point.
 my $cleanup_pidfile;
+
 END {
     unlink $cleanup_pidfile
         if defined $cleanup_pidfile && -e $cleanup_pidfile;
@@ -92,7 +93,7 @@ END {
 if ($pidfile) {
     open my $fh, '>', $pidfile
         or die "Could not open pidfile $pidfile: $!\n";
-    print { $fh } $$
+    print {$fh} $$
         or die "Could not write to pidfile $pidfile: $!\n";
     close $fh
         or die "Could not close pidfile $pidfile: $!\n";
@@ -105,7 +106,7 @@ $SIG{HUP}  = sub {
     reread_config;
     warn "Qmail configuration reloaded.\n";
 };
-$SIG{PIPE} = 'IGNORE';  # broken client mid-response should not kill us
+$SIG{PIPE} = 'IGNORE';    # broken client mid-response should not kill us
 
 $verbose && print "My PID is $$.\n";
 
@@ -115,90 +116,96 @@ $counter{yes} = $counter{no} = 0;
 
 $| = 1;
 
-for (;;) {
+for ( ;; ) {
     $verbose && printf "Listening on %s.\n", $listen;
-    while (my $c = $d->accept) {
+    while ( my $c = $d->accept ) {
         $verbose && printf "Accepted request from %vd.\n", $c->peeraddr;
         my $request_line = <$c>;
-        if (not defined $request_line) {
+        if ( not defined $request_line ) {
             $c->close;
             undef($c);
             next;
         }
 
-        while (my $line = <$c>) {
+        while ( my $line = <$c> ) {
             last if $line =~ /^\r?\n\z/;
         }
 
-        my ($method, $target) = $request_line =~
-            /^([A-Z]+) ([\x21-\x7e]+) HTTP\/1\.[01]\r?\n\z/;
-        if (not defined $method or $method ne 'GET' or $target !~ m[^/qd1/]) {
+        my ( $method, $target ) = $request_line =~ /^([A-Z]+) ([\x21-\x7e]+) HTTP\/1\.[01]\r?\n\z/;
+        if ( not defined $method or $method ne 'GET' or $target !~ m[^/qd1/] ) {
             $verbose && print "Not a qd request.\n";
-            _send_error($c, 403, "Forbidden");
+            _send_error( $c, 403, "Forbidden" );
             $c->close;
             undef($c);
             next;
         }
 
-        my ($command, $raw_query) = $target =~
-            m{\A/qd1/([A-Za-z_]+)(?:\?(.*))?\z};
-        if (not defined $command) {
+        my ( $command, $raw_query ) = $target =~ m{\A/qd1/([A-Za-z_]+)(?:\?(.*))?\z};
+        if ( not defined $command ) {
             $verbose && print "Not a qd request.\n";
-            _send_error($c, 403, "Forbidden");
+            _send_error( $c, 403, "Forbidden" );
             $c->close;
             undef($c);
             next;
         }
 
-        my $arg = defined $raw_query && length $raw_query
+        my $arg =
+            defined $raw_query && length $raw_query
             ? _uri_unescape($raw_query)
             : "\0";
 
         ($arg) = $arg =~ /^([\x20-\x7e]*)\z/ or do {
             $verbose && print "Invalid data received.\n";
-            _send_error($c, 400, "Bad Request");
+            _send_error( $c, 400, "Bad Request" );
             $c->close;
             undef($c);
             next;
         };
 
         my $rv;
-        if ($command eq 'qmail_local') {
+        if ( $command eq 'qmail_local' ) {
             $verbose && printf "qmail_local('%s') => ", $arg;
             $rv = eval { qmail_local($arg) };
             if ($@) {
                 $verbose && warn "qmail_local error: $@";
-                _send_error($c, 500, "Internal Server Error");
-                $c->close; undef($c); next;
+                _send_error( $c, 500, "Internal Server Error" );
+                $c->close;
+                undef($c);
+                next;
             }
             $verbose && printf "%s\n", defined $rv ? $rv : '(undef)';
-        } elsif ($command eq 'deliverable') {
+        }
+        elsif ( $command eq 'deliverable' ) {
             $verbose && printf "deliverable('%s') => ", $arg;
             $rv = eval { deliverable($arg) };
             if ($@) {
                 $verbose && warn "deliverable error: $@";
-                _send_error($c, 500, "Internal Server Error");
-                $c->close; undef($c); next;
+                _send_error( $c, 500, "Internal Server Error" );
+                $c->close;
+                undef($c);
+                next;
             }
-            $verbose && printf "%s\n", defined $rv ? sprintf("0x%02x", $rv) : '(undef)';
-            $counter{yes}++ if   $rv;
-            $counter{no}++  if ! $rv;
+            $verbose && printf "%s\n", defined $rv ? sprintf( "0x%02x", $rv ) : '(undef)';
+            $counter{yes}++ if $rv;
+            $counter{no}++  if !$rv;
             my $total = $counter{yes} + $counter{no};
             $0 = sprintf "$base0 yes=%d(%.1f%%), no=%d(%.1f%%), total=%d",
-                $counter{yes}, $counter{yes}/$total*100,
-                $counter{no},  $counter{no} /$total*100,
+                $counter{yes}, $counter{yes} / $total * 100,
+                $counter{no},  $counter{no} / $total * 100,
                 $total;
-        } else {
+        }
+        else {
             $verbose && printf "Unknown command: %s\n", $command;
-            _send_error($c, 403, "Forbidden");
+            _send_error( $c, 403, "Forbidden" );
             $c->close;
             undef($c);
             next;
         }
-        if (defined $rv) {
-            _send_response($c, 200, "OK", $rv);
-        } else {
-            _send_response($c, 204, "UNDEF", '');
+        if ( defined $rv ) {
+            _send_response( $c, 200, "OK", $rv );
+        }
+        else {
+            _send_response( $c, 204, "UNDEF", '' );
         }
         $c->close;
         undef($c);
@@ -212,13 +219,13 @@ for (;;) {
 sub daemonize {
     my $pid = fork;
     die "fork: $!\n" if not defined $pid;
-    exit 0 if $pid;             # original parent exits
+    exit 0           if $pid;               # original parent exits
 
     POSIX::setsid() != -1 or die "setsid: $!\n";
 
     $pid = fork;
     die "fork: $!\n" if not defined $pid;
-    exit 0 if $pid;             # session leader exits
+    exit 0           if $pid;               # session leader exits
 
     open STDIN,  '<', '/dev/null' or die "reopen STDIN: $!\n";
     open STDOUT, '>', '/dev/null' or die "reopen STDOUT: $!\n";
