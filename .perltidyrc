@@ -1,7 +1,7 @@
 -l=100  # Max line width
 -i=4    # Indent level
 -ci=4   # Continuation indent cols
--b      # edit in place and backup
+-b      # edit in place
 -se     # Errors to STDERR
 -vt=1   # Maximal vertical tightness
 -cti=0  # No extra indentation for closing brackets

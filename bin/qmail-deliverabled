@@ -5,13 +5,13 @@ use IO::Socket::INET;
 use POSIX ();
 use Qmail::Deliverable ':all';
 use Getopt::Long;
-Getopt::Long::Configure("bundling");
+Getopt::Long::Configure( "bundling" );
 
 my ( $pidfile, $verbose, $stop, $foreground );
 my $listen = "127.0.0.1:8998";
 
 sub _uri_unescape {
-    my ($value) = @_;
+    my ( $value ) = @_;
     $value =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/eg;
     return $value;
 }
@@ -21,7 +21,7 @@ sub _send_response {
     $body = '' if not defined $body;
     my $response = join "",
         "HTTP/1.0 $code $message\r\n",
-        "Content-Length: " . length($body) . "\r\n",
+        "Content-Length: " . length( $body ) . "\r\n",
         "Content-Type: text/plain\r\n",
         "Connection: close\r\n",
         "\r\n",
@@ -43,11 +43,11 @@ GetOptions(
     "foreground|f" => \$foreground,
 ) or exit 255;
 
-($listen) = $listen =~ /^(stop|[0-9.]+:[0-9]+)$/
+( $listen ) = $listen =~ /^(stop|[0-9.]+:[0-9]+)$/
     or die "Listen argument must be ip:port!\n";
 
-if ($pidfile) {
-    ($pidfile) = $pidfile =~ m[^(/[\x20-\xff]+)$]
+if ( $pidfile ) {
+    ( $pidfile ) = $pidfile =~ m[^(/[\x20-\xff]+)$]
         or die "pidfile must be an absolute path, beginning with a /.\n";
 }
 
@@ -57,7 +57,7 @@ if ( $stop or $listen eq 'stop' ) {
     die "Cannot --stop without --pidfile.\n" if not $pidfile;
     open my $fh, '<', $pidfile or die "Could not open pidfile $pidfile: $!\n";
     my $pid = readline $fh;
-    ($pid) = $pid =~ /^([2-9]|[0-9]{2,})$/
+    ( $pid ) = $pid =~ /^([2-9]|[0-9]{2,})$/
         or die "Could not read PID from $pidfile\n";
     close $fh;
     kill 15, $pid;
@@ -90,7 +90,7 @@ END {
         if defined $cleanup_pidfile && -e $cleanup_pidfile;
 }
 
-if ($pidfile) {
+if ( $pidfile ) {
     open my $fh, '>', $pidfile
         or die "Could not open pidfile $pidfile: $!\n";
     print {$fh} $$
@@ -110,7 +110,7 @@ $SIG{PIPE} = 'IGNORE';    # broken client mid-response should not kill us
 
 $verbose && print "My PID is $$.\n";
 
-my ($base0) = $0 =~ /([\x20-\x7f]+)/;
+my ( $base0 ) = $0 =~ /([\x20-\x7f]+)/;
 my %counter;
 $counter{yes} = $counter{no} = 0;
 
@@ -123,7 +123,7 @@ for ( ;; ) {
         my $request_line = <$c>;
         if ( not defined $request_line ) {
             $c->close;
-            undef($c);
+            undef( $c );
             next;
         }
 
@@ -136,7 +136,7 @@ for ( ;; ) {
             $verbose && print "Not a qd request.\n";
             _send_error( $c, 403, "Forbidden" );
             $c->close;
-            undef($c);
+            undef( $c );
             next;
         }
 
@@ -145,44 +145,44 @@ for ( ;; ) {
             $verbose && print "Not a qd request.\n";
             _send_error( $c, 403, "Forbidden" );
             $c->close;
-            undef($c);
+            undef( $c );
             next;
         }
 
         my $arg =
             defined $raw_query && length $raw_query
-            ? _uri_unescape($raw_query)
+            ? _uri_unescape( $raw_query )
             : "\0";
 
-        ($arg) = $arg =~ /^([\x20-\x7e]*)\z/ or do {
+        ( $arg ) = $arg =~ /^([\x20-\x7e]*)\z/ or do {
             $verbose && print "Invalid data received.\n";
             _send_error( $c, 400, "Bad Request" );
             $c->close;
-            undef($c);
+            undef( $c );
             next;
         };
 
         my $rv;
         if ( $command eq 'qmail_local' ) {
             $verbose && printf "qmail_local('%s') => ", $arg;
-            $rv = eval { qmail_local($arg) };
-            if ($@) {
+            $rv = eval { qmail_local( $arg ) };
+            if ( $@ ) {
                 $verbose && warn "qmail_local error: $@";
                 _send_error( $c, 500, "Internal Server Error" );
                 $c->close;
-                undef($c);
+                undef( $c );
                 next;
             }
             $verbose && printf "%s\n", defined $rv ? $rv : '(undef)';
         }
         elsif ( $command eq 'deliverable' ) {
             $verbose && printf "deliverable('%s') => ", $arg;
-            $rv = eval { deliverable($arg) };
-            if ($@) {
+            $rv = eval { deliverable( $arg ) };
+            if ( $@ ) {
                 $verbose && warn "deliverable error: $@";
                 _send_error( $c, 500, "Internal Server Error" );
                 $c->close;
-                undef($c);
+                undef( $c );
                 next;
             }
             $verbose && printf "%s\n", defined $rv ? sprintf( "0x%02x", $rv ) : '(undef)';
@@ -198,7 +198,7 @@ for ( ;; ) {
             $verbose && printf "Unknown command: %s\n", $command;
             _send_error( $c, 403, "Forbidden" );
             $c->close;
-            undef($c);
+            undef( $c );
             next;
         }
         if ( defined $rv ) {
@@ -208,7 +208,7 @@ for ( ;; ) {
             _send_response( $c, 204, "UNDEF", '' );
         }
         $c->close;
-        undef($c);
+        undef( $c );
     }
     sleep 5;
 }
