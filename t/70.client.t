@@ -1,6 +1,8 @@
 use strict;
 use warnings;
 use Test::More;
+use IO::Socket::INET;
+use POSIX qw(WNOHANG);
 
 use lib 'lib';
 use lib 't/lib';
@@ -26,6 +28,35 @@ sub warning_like (&$$) {
         $code->();
     }
     like join("", @warnings), $re, $name;
+}
+
+# Start a one-shot TCP server that sends $raw_response to the first connection.
+# Returns ($pid, $port). Caller must waitpid($pid, 0) after use.
+sub one_shot_server {
+    my ($raw_response) = @_;
+    my $srv = IO::Socket::INET->new(
+        LocalAddr => '127.0.0.1',
+        LocalPort => 0,
+        Proto     => 'tcp',
+        Listen    => 1,
+        ReuseAddr => 1,
+    ) or die "one_shot_server: $!";
+    my $sport = $srv->sockport;
+    my $pid = fork // die "fork: $!";
+    if ($pid == 0) {
+        local $SIG{ALRM} = sub { POSIX::_exit(1) };
+        alarm 5;
+        my $c = $srv->accept;
+        if ($c) {
+            while (my $line = <$c>) { last if $line =~ /^\r?\n$/ }
+            print {$c} $raw_response;
+            $c->close;
+        }
+        $srv->close;
+        POSIX::_exit(0);
+    }
+    $srv->close;
+    return ($pid, $sport);
 }
 
 subtest 'qmail_local: routes to daemon and returns the local part' => sub {
@@ -105,6 +136,73 @@ subtest 'qmail_local with connection failure returns ""' => sub {
         $rv = Qmail::Deliverable::Client::qmail_local('alice@sub.example.com');
     } qr/unreachable|broken/i, 'warning on connection failure';
     is $rv, '', 'empty string returned for failure';
+};
+
+subtest 'invalid address -> warns and returns undef' => sub {
+    my ($rv, $rv2);
+    warning_like { $rv  = Qmail::Deliverable::Client::deliverable('not@@valid') }
+        qr/Invalid address/, 'deliverable warns on bad address';
+    is $rv, undef, 'deliverable returns undef for invalid address';
+
+    warning_like { $rv2 = Qmail::Deliverable::Client::qmail_local('not@@valid') }
+        qr/Invalid address/, 'qmail_local warns on bad address';
+    is $rv2, undef, 'qmail_local returns undef for invalid address';
+};
+
+subtest 'SERVER callback returning undef -> silent QD_CLIENT_FAILURE' => sub {
+    local $Qmail::Deliverable::Client::SERVER = sub { undef };
+    my ($rv, @warnings);
+    {
+        local $SIG{__WARN__} = sub { push @warnings, @_ };
+        $rv = Qmail::Deliverable::Client::deliverable('alice@sub.example.com');
+    }
+    is $rv, 0x2f, 'QD_CLIENT_FAILURE returned when callback returns undef';
+    is scalar @warnings, 0, 'no warning emitted';
+};
+
+subtest 'invalid SERVER format -> warns and returns QD_CLIENT_FAILURE' => sub {
+    local $Qmail::Deliverable::Client::SERVER = 'not-a-valid-host-port';
+    my $rv;
+    warning_like {
+        $rv = Qmail::Deliverable::Client::deliverable('alice@sub.example.com');
+    } qr/unreachable|broken/i, 'warns on invalid server address format';
+    is $rv, 0x2f, 'QD_CLIENT_FAILURE returned';
+};
+
+subtest 'non-200/204 from server -> warns and returns QD_CLIENT_FAILURE' => sub {
+    my ($fpid, $fport) = one_shot_server(
+        "HTTP/1.0 403 Forbidden\r\nContent-Length: 14\r\n\r\n403 Forbidden\r\n"
+    );
+    local $Qmail::Deliverable::Client::SERVER = "127.0.0.1:$fport";
+    my $rv;
+    warning_like {
+        $rv = Qmail::Deliverable::Client::deliverable('alice@sub.example.com');
+    } qr/unreachable|broken/i, 'warns on non-200/204 status';
+    is $rv, 0x2f, 'QD_CLIENT_FAILURE returned';
+    waitpid $fpid, 0;
+};
+
+subtest 'malformed response -> warns and returns QD_CLIENT_FAILURE' => sub {
+    my ($fpid, $fport) = one_shot_server("not HTTP at all\n");
+    local $Qmail::Deliverable::Client::SERVER = "127.0.0.1:$fport";
+    my $rv;
+    warning_like {
+        $rv = Qmail::Deliverable::Client::deliverable('alice@sub.example.com');
+    } qr/unreachable|broken/i, 'warns on malformed response';
+    is $rv, 0x2f, 'QD_CLIENT_FAILURE returned';
+    waitpid $fpid, 0;
+};
+
+subtest 'plus-sign in local part roundtrips through HTTP' => sub {
+    is Qmail::Deliverable::Client::qmail_local('alice+tag@sub.example.com'),
+       'alice+tag',
+       '+ in local part is correctly percent-encoded and decoded';
+};
+
+subtest 'percent-sign in local part roundtrips through HTTP' => sub {
+    is Qmail::Deliverable::Client::qmail_local('alice%test@sub.example.com'),
+       'alice%test',
+       '% in local part is correctly percent-encoded and decoded';
 };
 
 done_testing();

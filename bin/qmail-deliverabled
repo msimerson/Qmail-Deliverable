@@ -166,10 +166,20 @@ for (;;) {
         if ($command eq 'qmail_local') {
             $verbose && printf "qmail_local('%s') => ", $arg;
             $rv = eval { qmail_local($arg) };
+            if ($@) {
+                $verbose && warn "qmail_local error: $@";
+                _send_error($c, 500, "Internal Server Error");
+                $c->close; undef($c); next;
+            }
             $verbose && printf "%s\n", defined $rv ? $rv : '(undef)';
         } elsif ($command eq 'deliverable') {
             $verbose && printf "deliverable('%s') => ", $arg;
             $rv = eval { deliverable($arg) };
+            if ($@) {
+                $verbose && warn "deliverable error: $@";
+                _send_error($c, 500, "Internal Server Error");
+                $c->close; undef($c); next;
+            }
             $verbose && printf "%s\n", defined $rv ? sprintf("0x%02x", $rv) : '(undef)';
             $counter{yes}++ if   $rv;
             $counter{no}++  if ! $rv;

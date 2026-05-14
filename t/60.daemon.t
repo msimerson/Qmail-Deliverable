@@ -21,17 +21,18 @@ sub uri_escape {
 }
 
 sub request {
-    my ($method, $path, $content) = @_;
+    my ($method, $path, $content, $req_port) = @_;
+    $req_port //= $port;
     my $sock = IO::Socket::INET->new(
         PeerAddr => '127.0.0.1',
-        PeerPort => $port,
+        PeerPort => $req_port,
         Proto    => 'tcp',
         Timeout  => 5,
     ) or die "connect: $!";
 
     my $request = join "",
         "$method /$path HTTP/1.0\r\n",
-        "Host: 127.0.0.1:$port\r\n",
+        "Host: 127.0.0.1:$req_port\r\n",
         "Connection: close\r\n",
         (defined $content ? "Content-Length: " . length($content) . "\r\n" : ""),
         "\r\n",
@@ -52,7 +53,7 @@ sub request {
     };
 }
 
-sub GET { request('GET', $_[0]) }
+sub GET  { request('GET',  $_[0], undef, $_[1]) }
 sub POST { request('POST', $_[0], $_[1]) }
 
 END {
@@ -131,6 +132,41 @@ subtest 'SIGHUP rereads config' => sub {
     }
     ok $after && $after->{code} == 204,
        'after SIGHUP, example.com is no longer local';
+};
+
+subtest 'command with no query string -> 400' => sub {
+    my $r = GET("qd1/qmail_local");
+    is $r->{code}, 400, 'missing query string is Bad Request';
+};
+
+subtest 'command with empty query string -> 400' => sub {
+    my $r = GET("qd1/qmail_local?");
+    is $r->{code}, 400, 'empty query string is Bad Request';
+};
+
+subtest 'plus-sign in local part survives percent-encoding roundtrip' => sub {
+    my $r = GET("qd1/qmail_local?" . uri_escape('alice+tag@sub.example.com'));
+    is $r->{code}, 200, '200 OK';
+    is $r->{content}, 'alice+tag', '+ survives encode/decode';
+};
+
+subtest 'percent-sign in local part survives percent-encoding roundtrip' => sub {
+    my $r = GET("qd1/qmail_local?" . uri_escape('alice%test@sub.example.com'));
+    is $r->{code}, 200, '200 OK';
+    is $r->{content}, 'alice%test', '% survives encode/decode';
+};
+
+subtest 'internal exception in dispatched sub -> 500' => sub {
+    my ($epid, $eport) = start_daemon(
+        qmail_dir => $fixtures,
+        pre_hook  => sub {
+            no warnings 'redefine';
+            *Qmail::Deliverable::qmail_local = sub { die "injected error\n" };
+        },
+    );
+    my $r = GET("qd1/qmail_local?" . uri_escape('alice@sub.example.com'), $eport);
+    is $r->{code}, 500, 'unhandled exception returns 500 not 204';
+    stop_daemon($epid);
 };
 
 done_testing();

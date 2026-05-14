@@ -105,6 +105,7 @@ sub start_daemon {
             push @ARGV, '--pidfile', $pidfile if $pidfile;
             $Qmail::Deliverable::qmail_dir = $qmail_dir;
             Qmail::Deliverable::reread_config();
+            $opts{pre_hook}->() if $opts{pre_hook};
             do "$root/bin/qmail-deliverabled";
             warn "daemon exited: $@" if $@;
             exit 1;
