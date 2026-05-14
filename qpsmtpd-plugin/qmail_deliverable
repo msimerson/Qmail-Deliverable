@@ -174,7 +174,7 @@ sub register {
             }
 
             $Qmail::Deliverable::Client::SERVER = sub {
-                my $server = _smtproute( $shared_domain );
+                my $server = _smtproute($shared_domain);
                 return "$server:$port"   if defined $server;
                 return "$fallback:$port" if defined $fallback;
                 return;
@@ -235,7 +235,7 @@ sub rcpt_handler {
     $self->log( LOGINFO, "error, SHOULD NOT HAPPEN" ), $k++ if $rv == 0xfe;
     $self->log( LOGINFO, "fail, address not local" ),  $k++ if $rv == 0xff;
 
-    if ( $rv ) {
+    if ($rv) {
         $self->log( LOGINFO, sprintf( "error, unknown: 0x%02x", $rv ) ) if not $k;
         return DECLINED;
     }
@@ -244,8 +244,8 @@ sub rcpt_handler {
 }
 
 sub _smtproute {
-    my ( $domain ) = @_;
-    my @parts      = split /\./, $domain;
+    my ($domain) = @_;
+    my @parts    = split /\./, $domain;
     if ( exists $smtproutes{$domain} ) {
         return undef if $smtproutes{$domain} eq "";
         return $smtproutes{$domain};

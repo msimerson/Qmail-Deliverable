@@ -52,3 +52,15 @@ sub realclean {
     push @{ $attribs{FILES} ||= [] }, 'cover_db';
     return $self->SUPER::realclean(%attribs);
 }
+
+sub postamble {
+    return <<'MAKE_FRAG';
+PERLTIDY_FILES = bin/qmail-deliverabled qpsmtpd-plugin/qmail_deliverable \
+    $(wildcard lib/Qmail/*.pm lib/Qmail/*/*.pm) \
+    $(wildcard t/*.t t/lib/*.pm t/lib/*/*.pm)
+
+tidy:
+	perltidy $(PERLTIDY_FILES)
+	$(RM_F) $(addsuffix .bak, $(PERLTIDY_FILES))
+MAKE_FRAG
+}

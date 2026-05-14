@@ -6,7 +6,7 @@ Revision history for the `Qmail::Deliverable` Perl extension.
 
 - fix: tests on CPAN smoker machines failed due to umask
 - change: shed dependencies, they pull in half of CPAN. :-(
-- change: perltidy
+- change: add perltidy and 'make tidy' target
 
 ## 1.11
 
